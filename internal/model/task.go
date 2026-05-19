@@ -24,20 +24,20 @@ type ActivityRef struct {
 }
 
 type Task struct {
-	ID            string        `yaml:"id"`
-	Title         string        `yaml:"title"`
-	Context       string        `yaml:"context,omitempty"` // e.g. work, personal, other
-	Notes         string        `yaml:"notes,omitempty"`
-	Labels        []string      `yaml:"labels,omitempty"`
-	Status        TaskStatus    `yaml:"status"`
-	Priority      Priority      `yaml:"priority"`
-	CreatedAt     time.Time     `yaml:"created_at"`
-	UpdatedAt     time.Time     `yaml:"updated_at"`
-	DoneAt        *time.Time    `yaml:"done_at,omitempty"`
-	DueDate       string        `yaml:"due_date,omitempty"`
-	CarryFrom     string        `yaml:"carry_from,omitempty"`
-	CarryTo       string        `yaml:"carry_to,omitempty"`
-	ActivityRefs  []ActivityRef `yaml:"activity_refs,omitempty"`
+	ID           string        `yaml:"id"`
+	Title        string        `yaml:"title"`
+	Context      string        `yaml:"context,omitempty"` // e.g. work, personal, other
+	Notes        string        `yaml:"notes,omitempty"`
+	Labels       []string      `yaml:"labels,omitempty"`
+	Status       TaskStatus    `yaml:"status"`
+	Priority     Priority      `yaml:"priority"`
+	CreatedAt    time.Time     `yaml:"created_at"`
+	UpdatedAt    time.Time     `yaml:"updated_at"`
+	DoneAt       *time.Time    `yaml:"done_at,omitempty"`
+	DueDate      string        `yaml:"due_date,omitempty"`
+	CarryFrom    string        `yaml:"carry_from,omitempty"`
+	CarryTo      string        `yaml:"carry_to,omitempty"`
+	ActivityRefs []ActivityRef `yaml:"activity_refs,omitempty"`
 }
 
 type DayPlan struct {

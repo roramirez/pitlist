@@ -3,24 +3,24 @@ package tui
 import "github.com/charmbracelet/bubbles/key"
 
 type keyMap struct {
-	Up       key.Binding
-	Down     key.Binding
-	Left     key.Binding
-	Right    key.Binding
-	Tab      key.Binding
-	Add      key.Binding
-	Done     key.Binding
-	Edit     key.Binding
-	Carry    key.Binding
-	Delete   key.Binding
-	Filter   key.Binding
-	Week     key.Binding
-	Log      key.Binding
-	Tasks    key.Binding
-	Confirm  key.Binding
-	Cancel   key.Binding
-	Quit     key.Binding
-	Help     key.Binding
+	Up      key.Binding
+	Down    key.Binding
+	Left    key.Binding
+	Right   key.Binding
+	Tab     key.Binding
+	Add     key.Binding
+	Done    key.Binding
+	Edit    key.Binding
+	Carry   key.Binding
+	Delete  key.Binding
+	Filter  key.Binding
+	Week    key.Binding
+	Log     key.Binding
+	Tasks   key.Binding
+	Confirm key.Binding
+	Cancel  key.Binding
+	Quit    key.Binding
+	Help    key.Binding
 }
 
 var keys = keyMap{

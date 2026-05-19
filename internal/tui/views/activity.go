@@ -306,8 +306,8 @@ func (v ActivityView) View(width, height int) string {
 	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("63")).
-		Width(width - 2).
-		Height(height - 2).
+		Width(width-2).
+		Height(height-2).
 		Padding(0, 1).
 		Render(content)
 }

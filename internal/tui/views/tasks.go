@@ -697,7 +697,7 @@ func (v TasksView) handleFormKey(msg tea.KeyMsg) TasksView {
 		switch msg.String() {
 		case "left", "h":
 			if n > 0 {
-				v.tForm.contextIdx = (v.tForm.contextIdx - 1 + n + 1) % (n + 1) - 1
+				v.tForm.contextIdx = (v.tForm.contextIdx-1+n+1)%(n+1) - 1
 				if v.tForm.contextIdx < -1 {
 					v.tForm.contextIdx = n - 1
 				}
@@ -954,14 +954,14 @@ func (v TasksView) View(width, height int) string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("238")).
 		Width(listWidth).
-		Height(height - 2).
+		Height(height-2).
 		Padding(0, 1)
 
 	detailStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("238")).
 		Width(detailWidth).
-		Height(height - 2).
+		Height(height-2).
 		Padding(0, 1)
 
 	if v.pane == 0 {
@@ -1283,8 +1283,8 @@ func (v TasksView) renderLogForm(t model.Task, width int) string {
 	}, "\n")
 }
 
-func (v TasksView) Date() time.Time      { return v.date }
-func (v TasksView) Contexts() []string   { return v.contexts }
+func (v TasksView) Date() time.Time    { return v.date }
+func (v TasksView) Contexts() []string { return v.contexts }
 
 func (v TasksView) SetFilter(f TaskFilter) (TasksView, tea.Cmd) {
 	v.filter = f

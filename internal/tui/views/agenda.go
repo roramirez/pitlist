@@ -12,7 +12,10 @@ import (
 )
 
 type AgendaNavigateMsg struct{ Date time.Time }
-type AgendaTaskDoneMsg struct{ TaskID string; Date time.Time }
+type AgendaTaskDoneMsg struct {
+	TaskID string
+	Date   time.Time
+}
 
 type agendaItem struct {
 	task *model.Task
@@ -20,12 +23,12 @@ type agendaItem struct {
 }
 
 type AgendaView struct {
-	store   *storage.YAMLStore
-	items   []agendaItem // flattened list of (date, task) pairs
-	cursor  int
-	width   int
-	height  int
-	scroll  int
+	store  *storage.YAMLStore
+	items  []agendaItem // flattened list of (date, task) pairs
+	cursor int
+	width  int
+	height int
+	scroll int
 }
 
 func NewAgendaView(store *storage.YAMLStore) AgendaView {
@@ -205,8 +208,8 @@ func (v AgendaView) View(width, height int) string {
 	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("63")).
-		Width(width - 2).
-		Height(height - 2).
+		Width(width-2).
+		Height(height-2).
 		Padding(0, 1).
 		Render(content)
 }

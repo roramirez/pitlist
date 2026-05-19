@@ -72,7 +72,6 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a.handleKey(msg)
 
-
 	case views.FilterAppliedMsg:
 		var cmd tea.Cmd
 		a.tasksView, cmd = a.tasksView.SetFilter(msg.Filter)

@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -209,5 +210,288 @@ func TestNextIDs(t *testing.T) {
 	aid := NextActivityID(log)
 	if aid != "a-20260518-001" {
 		t.Errorf("unexpected activity ID: %q", aid)
+	}
+}
+
+func TestNextIDsIncrement(t *testing.T) {
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	plan := &model.DayPlan{
+		Date: date,
+		Tasks: []model.Task{
+			{ID: "t-20260518-001"},
+			{ID: "t-20260518-002"},
+		},
+	}
+	id := NextTaskID(plan)
+	if id != "t-20260518-003" {
+		t.Errorf("unexpected task ID: %q", id)
+	}
+}
+
+func TestListTasksDateRange(t *testing.T) {
+	s := newTestStore(t)
+	d1 := time.Date(2026, 5, 10, 0, 0, 0, 0, time.UTC)
+	d2 := time.Date(2026, 5, 15, 0, 0, 0, 0, time.UTC)
+	d3 := time.Date(2026, 5, 20, 0, 0, 0, 0, time.UTC)
+
+	for i, d := range []time.Time{d1, d2, d3} {
+		plan := &model.DayPlan{
+			Date: d,
+			Tasks: []model.Task{
+				{
+					ID:     fmt.Sprintf("t-%s-001", d.Format("20060102")),
+					Title:  fmt.Sprintf("Task %d", i+1),
+					Status: model.StatusTodo, CreatedAt: d, UpdatedAt: d,
+				},
+			},
+		}
+		if err := s.SaveDayPlan(plan); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	from := d2
+	results, err := s.ListTasks(TaskFilter{From: &from})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("expected 2, got %d", len(results))
+	}
+
+	to := d2
+	results, err = s.ListTasks(TaskFilter{To: &to})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("expected 2, got %d", len(results))
+	}
+
+	results, err = s.ListTasks(TaskFilter{From: &d2, To: &d2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].Title != "Task 2" {
+		t.Fatalf("expected Task 2, got %v", results)
+	}
+}
+
+func TestListTasksSearchFilter(t *testing.T) {
+	s := newTestStore(t)
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	plan := &model.DayPlan{
+		Date: date,
+		Tasks: []model.Task{
+			{ID: "t-20260518-001", Title: "Refactor auth module", Status: model.StatusTodo, CreatedAt: date, UpdatedAt: date},
+			{ID: "t-20260518-002", Title: "Write docs", Status: model.StatusTodo, CreatedAt: date, UpdatedAt: date},
+		},
+	}
+	if err := s.SaveDayPlan(plan); err != nil {
+		t.Fatal(err)
+	}
+
+	results, err := s.ListTasks(TaskFilter{Search: "auth"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].Title != "Refactor auth module" {
+		t.Fatalf("unexpected results: %v", results)
+	}
+}
+
+func TestListActivityDateRange(t *testing.T) {
+	s := newTestStore(t)
+	d1 := time.Date(2026, 5, 10, 0, 0, 0, 0, time.UTC)
+	d2 := time.Date(2026, 5, 15, 0, 0, 0, 0, time.UTC)
+	d3 := time.Date(2026, 5, 20, 0, 0, 0, 0, time.UTC)
+
+	for i, d := range []time.Time{d1, d2, d3} {
+		al := &model.ActivityLog{
+			Date: d,
+			Entries: []model.ActivityEntry{
+				{
+					ID:          fmt.Sprintf("a-%s-001", d.Format("20060102")),
+					Timestamp:   d,
+					Description: fmt.Sprintf("Activity %d", i+1),
+				},
+			},
+		}
+		if err := s.SaveActivityLog(al); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	from := d2
+	results, err := s.ListActivity(ActivityFilter{From: &from})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("expected 2, got %d", len(results))
+	}
+
+	to := d2
+	results, err = s.ListActivity(ActivityFilter{To: &to})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("expected 2, got %d", len(results))
+	}
+}
+
+func TestListActivitySearchFilter(t *testing.T) {
+	s := newTestStore(t)
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	al := &model.ActivityLog{
+		Date: date,
+		Entries: []model.ActivityEntry{
+			{ID: "a-20260518-001", Timestamp: date, Description: "Debugged the login flow"},
+			{ID: "a-20260518-002", Timestamp: date, Description: "Team standup"},
+		},
+	}
+	if err := s.SaveActivityLog(al); err != nil {
+		t.Fatal(err)
+	}
+
+	results, err := s.ListActivity(ActivityFilter{Search: "login"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].Description != "Debugged the login flow" {
+		t.Fatalf("unexpected results: %v", results)
+	}
+}
+
+func TestListActivityTaskRefFilter(t *testing.T) {
+	s := newTestStore(t)
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	al := &model.ActivityLog{
+		Date: date,
+		Entries: []model.ActivityEntry{
+			{ID: "a-20260518-001", Timestamp: date, Description: "Work on task", TaskRef: "t-20260518-001"},
+			{ID: "a-20260518-002", Timestamp: date, Description: "Unrelated work"},
+		},
+	}
+	if err := s.SaveActivityLog(al); err != nil {
+		t.Fatal(err)
+	}
+
+	results, err := s.ListActivity(ActivityFilter{TaskRef: "t-20260518-001"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].TaskRef != "t-20260518-001" {
+		t.Fatalf("unexpected results: %v", results)
+	}
+}
+
+func TestGetActivitiesByRefs(t *testing.T) {
+	s := newTestStore(t)
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	ts := time.Date(2026, 5, 18, 10, 0, 0, 0, time.UTC)
+
+	al := &model.ActivityLog{
+		Date: date,
+		Entries: []model.ActivityEntry{
+			{ID: "a-20260518-001", Timestamp: ts, Description: "First"},
+			{ID: "a-20260518-002", Timestamp: ts, Description: "Second"},
+		},
+	}
+	if err := s.SaveActivityLog(al); err != nil {
+		t.Fatal(err)
+	}
+
+	refs := []model.ActivityRef{
+		{ID: "a-20260518-001", Date: "2026-05-18"},
+	}
+	results, err := s.GetActivitiesByRefs(refs, date)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].Description != "First" {
+		t.Fatalf("unexpected results: %v", results)
+	}
+}
+
+func TestGetActivitiesByRefsFallback(t *testing.T) {
+	s := newTestStore(t)
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	ts := time.Date(2026, 5, 18, 10, 0, 0, 0, time.UTC)
+
+	al := &model.ActivityLog{
+		Date: date,
+		Entries: []model.ActivityEntry{
+			{ID: "a-20260518-001", Timestamp: ts, Description: "Only entry"},
+		},
+	}
+	if err := s.SaveActivityLog(al); err != nil {
+		t.Fatal(err)
+	}
+
+	// Empty refs triggers fallback: load all entries for fallbackDate
+	results, err := s.GetActivitiesByRefs(nil, date)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].Description != "Only entry" {
+		t.Fatalf("unexpected results: %v", results)
+	}
+}
+
+func TestAddActivityRefToTask(t *testing.T) {
+	s := newTestStore(t)
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	plan := &model.DayPlan{
+		Date: date,
+		Tasks: []model.Task{
+			{ID: "t-20260518-001", Title: "Task", Status: model.StatusTodo, CreatedAt: date, UpdatedAt: date},
+		},
+	}
+	if err := s.SaveDayPlan(plan); err != nil {
+		t.Fatal(err)
+	}
+
+	ref := model.ActivityRef{ID: "a-20260518-001", Date: "2026-05-18"}
+	if err := s.AddActivityRefToTask("t-20260518-001", ref); err != nil {
+		t.Fatalf("AddActivityRefToTask: %v", err)
+	}
+
+	task, _, err := s.GetTaskByID("t-20260518-001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(task.ActivityRefs) != 1 || task.ActivityRefs[0].ID != "a-20260518-001" {
+		t.Errorf("expected activity ref, got %v", task.ActivityRefs)
+	}
+
+	// Adding the same ref again should be idempotent
+	if err := s.AddActivityRefToTask("t-20260518-001", ref); err != nil {
+		t.Fatal(err)
+	}
+	task, _, err = s.GetTaskByID("t-20260518-001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(task.ActivityRefs) != 1 {
+		t.Errorf("expected 1 ref (idempotent), got %d", len(task.ActivityRefs))
+	}
+}
+
+func TestAddActivityRefToTaskNotFound(t *testing.T) {
+	s := newTestStore(t)
+	ref := model.ActivityRef{ID: "a-20260518-001", Date: "2026-05-18"}
+	err := s.AddActivityRefToTask("t-20260518-999", ref)
+	if err == nil {
+		t.Error("expected error for missing task")
+	}
+}
+
+func TestGetTaskByIDNotFound(t *testing.T) {
+	s := newTestStore(t)
+	_, _, err := s.GetTaskByID("t-20260101-999")
+	if err == nil {
+		t.Error("expected error for missing task")
 	}
 }
