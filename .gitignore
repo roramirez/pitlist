@@ -1,0 +1,16 @@
+# Binaries
+bin/
+*.exe
+*.out
+
+# Plan and Claude files
+Plan.md
+.claude/
+
+# Go
+*.test
+*.prof
+
+# Data
+*.yaml
+*.yml
