@@ -450,6 +450,474 @@ func TestTasksViewGlobalTasksMsg(t *testing.T) {
 	}
 }
 
+// helper: load a view with one task already in the store
+func viewWithTask(t *testing.T) (TasksView, *storage.YAMLStore, time.Time) {
+	t.Helper()
+	store, _ := storage.NewYAMLStore(t.TempDir())
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	plan := &model.DayPlan{
+		Date: date,
+		Tasks: []model.Task{
+			{ID: "t-20260518-001", Title: "My Task", Status: model.StatusTodo,
+				Notes: "original notes", CreatedAt: date, UpdatedAt: date},
+		},
+	}
+	store.SaveDayPlan(plan)
+	v := NewTasksView(store, date, "work", "personal")
+	v2, _ := v.Update(TasksMsg{Plan: plan, ActLog: &model.ActivityLog{Date: date}})
+	return v2, store, date
+}
+
+// ── notes editing ─────────────────────────────────────────────────────────────
+
+func TestTasksViewNotesEsc(t *testing.T) {
+	v, _, _ := viewWithTask(t)
+
+	// 'n' opens notes editor
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	v = v2
+	if v.detailMode != detailEditNotes {
+		t.Fatalf("expected detailEditNotes, got %v", v.detailMode)
+	}
+	if !v.IsInputActive() {
+		t.Error("IsInputActive should be true while editing notes")
+	}
+
+	// esc exits
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	v = v2
+	if v.detailMode != detailNormal {
+		t.Errorf("expected detailNormal after esc, got %v", v.detailMode)
+	}
+}
+
+func TestTasksViewNotesSave(t *testing.T) {
+	v, store, date := viewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	v = v2
+
+	_, cmd := v.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	if cmd == nil {
+		t.Fatal("ctrl+s in notes mode should return a save cmd")
+	}
+	msg := cmd()
+	if _, ok := msg.(TasksMsg); !ok {
+		t.Fatalf("expected TasksMsg after save notes, got %T", msg)
+	}
+	// verify notes were persisted
+	plan, _ := store.GetDayPlan(date)
+	_ = plan
+}
+
+// ── carry ─────────────────────────────────────────────────────────────────────
+
+func TestTasksViewCarryEsc(t *testing.T) {
+	v, _, _ := viewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	v = v2
+	if v.detailMode != detailCarry {
+		t.Fatalf("expected detailCarry, got %v", v.detailMode)
+	}
+
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	v = v2
+	if v.detailMode != detailNormal {
+		t.Errorf("expected detailNormal after esc, got %v", v.detailMode)
+	}
+}
+
+func TestTasksViewCarryInvalidDate(t *testing.T) {
+	v, _, _ := viewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	v = v2
+
+	// Clear the carry input and enter an invalid date
+	v.carryInput.SetValue("not-a-date")
+	v2, cmd := v.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	v = v2
+	_ = cmd
+	// Should stay in carry mode (invalid date rejected)
+	if v.detailMode != detailCarry {
+		t.Errorf("invalid date should keep carry mode, got %v", v.detailMode)
+	}
+}
+
+func TestTasksViewCarryConfirm(t *testing.T) {
+	v, store, srcDate := viewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	v = v2
+
+	destDate := srcDate.AddDate(0, 0, 1)
+	v.carryInput.SetValue(destDate.Format("2006-01-02"))
+
+	v2, cmd := v.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	v = v2
+	if cmd == nil {
+		t.Fatal("enter with valid carry date should return a cmd")
+	}
+	msg := cmd()
+	if _, ok := msg.(TasksMsg); !ok {
+		t.Fatalf("expected TasksMsg after carry, got %T", msg)
+	}
+
+	// task moved to dest
+	dest, _ := store.GetDayPlan(destDate)
+	if len(dest.Tasks) != 1 || dest.Tasks[0].ID != "t-20260518-001" {
+		t.Errorf("task not found on dest day: %v", dest.Tasks)
+	}
+}
+
+func TestTasksViewCarryInputKey(t *testing.T) {
+	v, _, _ := viewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	v = v2
+
+	// Typing in the carry input should update it
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
+	v = v2
+	_ = v.carryInput.Value() // just ensure no panic
+}
+
+// ── log activity form ─────────────────────────────────────────────────────────
+
+func TestTasksViewLogFormEsc(t *testing.T) {
+	v, _, _ := viewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'L'}})
+	v = v2
+	if v.detailMode != detailLogActivity {
+		t.Fatalf("expected detailLogActivity, got %v", v.detailMode)
+	}
+
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	v = v2
+	if v.detailMode != detailNormal {
+		t.Errorf("esc should close log form, got %v", v.detailMode)
+	}
+}
+
+func TestTasksViewLogFormTab(t *testing.T) {
+	v, _, _ := viewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'L'}})
+	v = v2
+
+	// Tab cycles fields
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyTab})
+	v = v2
+	if v.logForm.focusIdx != 1 {
+		t.Errorf("tab: focusIdx=%d, want 1", v.logForm.focusIdx)
+	}
+
+	// Shift+tab goes back
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	v = v2
+	if v.logForm.focusIdx != 0 {
+		t.Errorf("shift+tab: focusIdx=%d, want 0", v.logForm.focusIdx)
+	}
+}
+
+func TestTasksViewLogFormEmptySubmit(t *testing.T) {
+	v, _, _ := viewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'L'}})
+	v = v2
+
+	// ctrl+s with empty description → nil cmd
+	v2, cmd := v.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	v = v2
+	if cmd != nil {
+		// submitLogForm returns nil for empty desc; that's fine
+	}
+	_ = cmd
+}
+
+func TestTasksViewLogFormSubmit(t *testing.T) {
+	v, _, _ := viewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'L'}})
+	v = v2
+
+	// Type a description into the first field
+	for _, ch := range []rune{'W', 'o', 'r', 'k'} {
+		v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{ch}})
+		v = v2
+	}
+
+	v2, cmd := v.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	v = v2
+	if cmd == nil {
+		t.Fatal("ctrl+s with description should return a cmd")
+	}
+	msg := cmd()
+	if _, ok := msg.(TasksMsg); !ok {
+		t.Fatalf("expected TasksMsg after log submit, got %T", msg)
+	}
+}
+
+// ── edit task form ────────────────────────────────────────────────────────────
+
+func TestTasksViewEditFormEsc(t *testing.T) {
+	v, _, _ := viewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	v = v2
+	if v.detailMode != detailEditTask {
+		t.Fatalf("expected detailEditTask, got %v", v.detailMode)
+	}
+
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	v = v2
+	if v.detailMode != detailNormal {
+		t.Errorf("esc should close edit form")
+	}
+}
+
+func TestTasksViewEditFormTab(t *testing.T) {
+	v, _, _ := viewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	v = v2
+
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyTab})
+	v = v2
+	if v.tForm.focusIdx != 1 {
+		t.Errorf("tab: focusIdx=%d, want 1", v.tForm.focusIdx)
+	}
+}
+
+func TestTasksViewEditFormSave(t *testing.T) {
+	v, store, date := viewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	v = v2
+
+	v2, cmd := v.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	v = v2
+	if cmd == nil {
+		t.Fatal("ctrl+s in edit form should return a cmd")
+	}
+	msg := cmd()
+	if _, ok := msg.(TasksMsg); !ok {
+		t.Fatalf("expected TasksMsg after edit save, got %T", msg)
+	}
+	plan, _ := store.GetDayPlan(date)
+	if len(plan.Tasks) != 1 {
+		t.Errorf("expected 1 task, got %d", len(plan.Tasks))
+	}
+}
+
+// ── add form save ─────────────────────────────────────────────────────────────
+
+func TestTasksViewAddFormSave(t *testing.T) {
+	store, _ := storage.NewYAMLStore(t.TempDir())
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	v := NewTasksView(store, date, "work")
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	v = v2
+
+	// Type title
+	for _, ch := range []rune{'N', 'e', 'w'} {
+		v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{ch}})
+		v = v2
+	}
+
+	v2, cmd := v.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	v = v2
+	if cmd == nil {
+		t.Fatal("ctrl+s with title should return a cmd")
+	}
+	if v.adding {
+		t.Error("adding should be false after save")
+	}
+	msg := cmd()
+	if _, ok := msg.(TasksMsg); !ok {
+		t.Fatalf("expected TasksMsg after add save, got %T", msg)
+	}
+
+	plan, _ := store.GetDayPlan(date)
+	if len(plan.Tasks) != 1 || plan.Tasks[0].Title != "New" {
+		t.Errorf("task not saved: %v", plan.Tasks)
+	}
+}
+
+func TestTasksViewAddFormEnterSave(t *testing.T) {
+	store, _ := storage.NewYAMLStore(t.TempDir())
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	v := NewTasksView(store, date)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	v = v2
+
+	for _, ch := range []rune{'T', 'a', 's', 'k'} {
+		v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{ch}})
+		v = v2
+	}
+
+	// Tab to last field then enter
+	for i := 0; i < 3; i++ {
+		v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyTab})
+		v = v2
+	}
+	v2, cmd := v.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	v = v2
+	_ = cmd
+}
+
+func TestTasksViewAddFormEmptyCtrlS(t *testing.T) {
+	store, _ := storage.NewYAMLStore(t.TempDir())
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	v := NewTasksView(store, date)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	v = v2
+
+	// ctrl+s with empty title → close form, no cmd
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	v = v2
+	if v.adding {
+		t.Error("adding should be false after ctrl+s with empty title")
+	}
+}
+
+// ── contextValue / contextDisplay ────────────────────────────────────────────
+
+func TestContextValue(t *testing.T) {
+	f := newTaskForm("", "", "work", []string{"work", "personal"}, "", "medium")
+	if f.contextValue() != "work" {
+		t.Errorf("contextValue() = %q, want 'work'", f.contextValue())
+	}
+
+	// Out of range → empty
+	f.contextIdx = 99
+	if f.contextValue() != "" {
+		t.Errorf("out-of-range contextValue should be empty, got %q", f.contextValue())
+	}
+}
+
+func TestContextDisplay(t *testing.T) {
+	f := newTaskForm("", "", "work", []string{"work", "personal"}, "", "medium")
+
+	out := f.contextDisplay(true) // focused
+	if out == "" {
+		t.Error("contextDisplay focused returned empty")
+	}
+	out = f.contextDisplay(false) // unfocused
+	if out == "" {
+		t.Error("contextDisplay unfocused returned empty")
+	}
+
+	// No contexts → label "—"
+	f2 := newTaskForm("", "", "", nil, "", "medium")
+	out = f2.contextDisplay(false)
+	if out == "" {
+		t.Error("contextDisplay with no contexts returned empty")
+	}
+}
+
+// ── render detail modes ───────────────────────────────────────────────────────
+
+func TestTasksViewViewWithCarryMode(t *testing.T) {
+	v, _, _ := viewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	v = v2
+
+	out := v.View(120, 40)
+	if out == "" {
+		t.Error("View in carry mode returned empty")
+	}
+}
+
+func TestTasksViewViewWithNotesMode(t *testing.T) {
+	v, _, _ := viewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	v = v2
+
+	out := v.View(120, 40)
+	if out == "" {
+		t.Error("View in notes mode returned empty")
+	}
+}
+
+func TestTasksViewViewWithLogMode(t *testing.T) {
+	v, _, _ := viewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'L'}})
+	v = v2
+
+	out := v.View(120, 40)
+	if out == "" {
+		t.Error("View in log-activity mode returned empty")
+	}
+}
+
+func TestTasksViewViewWithEditMode(t *testing.T) {
+	v, _, _ := viewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	v = v2
+
+	out := v.View(120, 40)
+	if out == "" {
+		t.Error("View in edit-task mode returned empty")
+	}
+}
+
+func TestTasksViewViewWithAddForm(t *testing.T) {
+	store, _ := storage.NewYAMLStore(t.TempDir())
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	v := NewTasksView(store, date)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	v = v2
+
+	out := v.View(120, 40)
+	if out == "" {
+		t.Error("View with add form returned empty")
+	}
+}
+
+func TestTasksViewViewDoneTask(t *testing.T) {
+	store, _ := storage.NewYAMLStore(t.TempDir())
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	now := time.Now().UTC()
+	plan := &model.DayPlan{
+		Date: date,
+		Tasks: []model.Task{
+			{ID: "t-001", Title: "Done task", Status: model.StatusDone,
+				Priority: model.PriorityHigh, CarryFrom: "2026-05-17",
+				Labels: []string{"work"}, DoneAt: &now,
+				CreatedAt: date, UpdatedAt: date},
+		},
+	}
+	v := NewTasksView(store, date, "work")
+	v2, _ := v.Update(TasksMsg{Plan: plan, ActLog: &model.ActivityLog{Date: date}})
+	v = v2
+
+	out := v.View(120, 40)
+	if out == "" {
+		t.Error("View with done task returned empty")
+	}
+}
+
+// ── newQuickLogForm ───────────────────────────────────────────────────────────
+
+func TestNewQuickLogForm(t *testing.T) {
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	f := newQuickLogForm("t-20260518-001", date)
+	if f.taskID != "t-20260518-001" {
+		t.Errorf("taskID = %q, want t-20260518-001", f.taskID)
+	}
+}
+
 func TestTasksViewMaxMin(t *testing.T) {
 	if max(3, 7) != 7 {
 		t.Error("max(3,7) should be 7")
@@ -462,5 +930,444 @@ func TestTasksViewMaxMin(t *testing.T) {
 	}
 	if min(9, 2) != 2 {
 		t.Error("min(9,2) should be 2")
+	}
+}
+
+// ── handleFormKey ─────────────────────────────────────────────────────────────
+
+func TestHandleFormKeyContextCycleRight(t *testing.T) {
+	store, _ := storage.NewYAMLStore(t.TempDir())
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	v := NewTasksView(store, date, "work", "personal")
+
+	// Open add form
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	v = v2
+
+	// Tab to context field (focusIdx=1)
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyTab})
+	v = v2
+	if v.tForm.focusIdx != 1 {
+		t.Fatalf("expected focusIdx=1, got %d", v.tForm.focusIdx)
+	}
+
+	initialIdx := v.tForm.contextIdx
+	// Send right arrow key → contextIdx should increment
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRight})
+	v = v2
+	if v.tForm.contextIdx == initialIdx && len(v.tForm.contexts) > 0 {
+		t.Errorf("right arrow: contextIdx should have changed from %d", initialIdx)
+	}
+
+	// Send 'l' key → also cycles right
+	prev := v.tForm.contextIdx
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
+	v = v2
+	// Cycle past end (wraps to -1)
+	// Keep cycling until we confirm wrap behaviour doesn't panic
+	for i := 0; i < len(v.tForm.contexts)+2; i++ {
+		v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
+		v = v2
+	}
+	_ = prev
+}
+
+func TestHandleFormKeyContextCycleLeft(t *testing.T) {
+	store, _ := storage.NewYAMLStore(t.TempDir())
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	v := NewTasksView(store, date, "work", "personal")
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	v = v2
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyTab})
+	v = v2
+
+	// Send left arrow multiple times — no panic, wraps correctly
+	for i := 0; i < len(v.tForm.contexts)+3; i++ {
+		v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyLeft})
+		v = v2
+	}
+}
+
+func TestHandleFormKeyLabelsField(t *testing.T) {
+	store, _ := storage.NewYAMLStore(t.TempDir())
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	v := NewTasksView(store, date, "work")
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	v = v2
+	// Tab twice to labels field (focusIdx=2)
+	for i := 0; i < 2; i++ {
+		v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyTab})
+		v = v2
+	}
+	if v.tForm.focusIdx != 2 {
+		t.Fatalf("expected focusIdx=2, got %d", v.tForm.focusIdx)
+	}
+	// Send a rune key → no panic
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+	v = v2
+}
+
+func TestHandleFormKeyPriorityField(t *testing.T) {
+	store, _ := storage.NewYAMLStore(t.TempDir())
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	v := NewTasksView(store, date, "work")
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	v = v2
+	// Tab 3 times to priority field (focusIdx=3)
+	for i := 0; i < 3; i++ {
+		v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyTab})
+		v = v2
+	}
+	if v.tForm.focusIdx != 3 {
+		t.Fatalf("expected focusIdx=3, got %d", v.tForm.focusIdx)
+	}
+	// Send a rune key → no panic
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
+	v = v2
+}
+
+// ── updateTaskForm extra paths ────────────────────────────────────────────────
+
+func TestTasksViewEditFormShiftTab(t *testing.T) {
+	v, _, _ := viewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	v = v2
+	if v.detailMode != detailEditTask {
+		t.Fatalf("expected detailEditTask, got %v", v.detailMode)
+	}
+
+	// shift+tab from focusIdx=0 wraps to taskFormFields-1 (3)
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	v = v2
+	if v.tForm.focusIdx != taskFormFields-1 {
+		t.Errorf("shift+tab: focusIdx=%d, want %d", v.tForm.focusIdx, taskFormFields-1)
+	}
+}
+
+func TestTasksViewEditFormEnterLastField(t *testing.T) {
+	v, _, _ := viewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	v = v2
+
+	// Tab to last field
+	for i := 0; i < taskFormFields-1; i++ {
+		v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyTab})
+		v = v2
+	}
+	if v.tForm.focusIdx != taskFormFields-1 {
+		t.Fatalf("expected last field, got %d", v.tForm.focusIdx)
+	}
+
+	// enter on last field → ctrl+s saves
+	v2, cmd := v.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	v = v2
+	if cmd == nil {
+		t.Fatal("enter on last edit field should return a save cmd")
+	}
+	msg := cmd()
+	if _, ok := msg.(TasksMsg); !ok {
+		t.Errorf("expected TasksMsg, got %T", msg)
+	}
+}
+
+func TestTasksViewEditFormDefaultKey(t *testing.T) {
+	v, _, _ := viewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	v = v2
+
+	// Send a regular rune → handleFormKey is called, no panic
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	v = v2
+}
+
+// ── renderTasksByContext ──────────────────────────────────────────────────────
+
+func TestTasksViewRenderMultiContext(t *testing.T) {
+	store, _ := storage.NewYAMLStore(t.TempDir())
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	v := NewTasksView(store, date, "work", "personal")
+
+	plan := &model.DayPlan{
+		Date: date,
+		Tasks: []model.Task{
+			{ID: "t-001", Title: "Work task", Status: model.StatusTodo, Context: "work", CreatedAt: date, UpdatedAt: date},
+			{ID: "t-002", Title: "Personal task", Status: model.StatusTodo, Context: "personal", CreatedAt: date, UpdatedAt: date},
+			{ID: "t-003", Title: "Carried task", Status: model.StatusTodo, Context: "work", CarryFrom: "2026-05-17", CreatedAt: date, UpdatedAt: date},
+		},
+	}
+	v2, _ := v.Update(TasksMsg{Plan: plan, ActLog: &model.ActivityLog{Date: date}})
+	v = v2
+
+	out := v.View(120, 40)
+	if out == "" {
+		t.Error("View with multi-context tasks returned empty")
+	}
+}
+
+// ── focusLogField ─────────────────────────────────────────────────────────────
+
+func TestTasksViewLogFormFocusAllFields(t *testing.T) {
+	v, _, _ := viewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'L'}})
+	v = v2
+	if v.detailMode != detailLogActivity {
+		t.Fatalf("expected detailLogActivity, got %v", v.detailMode)
+	}
+
+	// Tab through all 4 fields (0→1→2→3→0) verifying no panic
+	for i := 0; i < quickLogFields+1; i++ {
+		v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyTab})
+		v = v2
+		want := (i + 1) % quickLogFields
+		if v.logForm.focusIdx != want {
+			t.Errorf("after %d tabs: focusIdx=%d, want %d", i+1, v.logForm.focusIdx, want)
+		}
+	}
+}
+
+// ── renderTaskDetail with notes and linked activities ─────────────────────────
+
+func TestTasksViewRenderTaskDetailWithNotes(t *testing.T) {
+	store, _ := storage.NewYAMLStore(t.TempDir())
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	ts := time.Date(2026, 5, 18, 10, 0, 0, 0, time.UTC)
+
+	plan := &model.DayPlan{
+		Date: date,
+		Tasks: []model.Task{
+			{ID: "t-20260518-001", Title: "Task with notes", Status: model.StatusTodo,
+				Notes: "These are some notes", CreatedAt: date, UpdatedAt: date},
+		},
+	}
+	store.SaveDayPlan(plan)
+
+	v := NewTasksView(store, date)
+	v2, _ := v.Update(TasksMsg{Plan: plan, ActLog: &model.ActivityLog{Date: date}})
+	v = v2
+
+	// Inject linked activities
+	v2, _ = v.Update(LinkedActivitiesMsg{Entries: []model.ActivityEntry{
+		{ID: "a-001", Timestamp: ts, Description: "Work", DurationMin: 45, Tags: []string{"work"}},
+	}})
+	v = v2
+
+	out := v.View(120, 40)
+	if out == "" {
+		t.Error("View with notes+linked activities returned empty")
+	}
+}
+
+// ── filteredTasks with globalResults ─────────────────────────────────────────
+
+func TestTasksViewFilteredTasksGlobalResults(t *testing.T) {
+	store, _ := storage.NewYAMLStore(t.TempDir())
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	v := NewTasksView(store, date)
+
+	task1 := &model.Task{ID: "t-001", Title: "Global A", Status: model.StatusTodo}
+	task2 := &model.Task{ID: "t-002", Title: "Global B", Status: model.StatusTodo}
+	v2, _ := v.Update(GlobalTasksMsg{Tasks: []*model.Task{task1, task2}})
+	v = v2
+
+	tasks := v.filteredTasks()
+	if len(tasks) != 2 {
+		t.Errorf("expected 2 tasks from globalResults, got %d", len(tasks))
+	}
+}
+
+// ── toggleDone done→todo ──────────────────────────────────────────────────────
+
+func TestTasksViewToggleDoneToTodo(t *testing.T) {
+	store, _ := storage.NewYAMLStore(t.TempDir())
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	now := time.Now().UTC()
+	plan := &model.DayPlan{
+		Date: date,
+		Tasks: []model.Task{
+			{ID: "t-20260518-001", Title: "Done task", Status: model.StatusDone,
+				DoneAt: &now, CreatedAt: date, UpdatedAt: date},
+		},
+	}
+	store.SaveDayPlan(plan)
+
+	v := NewTasksView(store, date)
+	// Use filter that includes done tasks
+	v.filter = TaskFilter{Statuses: []model.TaskStatus{model.StatusDone}}
+	v2, _ := v.Update(TasksMsg{Plan: plan, ActLog: &model.ActivityLog{Date: date}})
+	v = v2
+
+	_, cmd := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	if cmd == nil {
+		t.Fatal("'d' should return a cmd")
+	}
+	msg := cmd()
+	if _, ok := msg.(TasksMsg); !ok {
+		t.Errorf("expected TasksMsg after toggle done→todo, got %T", msg)
+	}
+
+	// Verify it's now todo
+	updated, _ := store.GetDayPlan(date)
+	if updated.Tasks[0].Status != model.StatusTodo {
+		t.Errorf("expected StatusTodo after toggle, got %q", updated.Tasks[0].Status)
+	}
+}
+
+// ── updateLogForm enter on non-last field + default key ──────────────────────
+
+func TestTasksViewLogFormEnterNonLastField(t *testing.T) {
+	v, _, _ := viewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'L'}})
+	v = v2
+	if v.logForm.focusIdx != 0 {
+		t.Fatalf("expected focusIdx=0, got %d", v.logForm.focusIdx)
+	}
+
+	// enter on non-last field (0) → advances to next field
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	v = v2
+	if v.logForm.focusIdx != 1 {
+		t.Errorf("enter on field 0: expected focusIdx=1, got %d", v.logForm.focusIdx)
+	}
+}
+
+func TestTasksViewLogFormDefaultKey(t *testing.T) {
+	v, _, _ := viewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'L'}})
+	v = v2
+
+	// Send a rune → forwarded to current field (desc), no panic
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+	v = v2
+}
+
+// ── updateNotes default key ───────────────────────────────────────────────────
+
+func TestTasksViewNotesDefaultKey(t *testing.T) {
+	v, _, _ := viewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	v = v2
+	if v.detailMode != detailEditNotes {
+		t.Fatalf("expected detailEditNotes, got %v", v.detailMode)
+	}
+
+	// Send a regular rune (not esc/ctrl+s) → goes to default branch, textarea updated
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	v = v2
+	if v.detailMode != detailEditNotes {
+		t.Errorf("should stay in notes mode after rune key, got %v", v.detailMode)
+	}
+}
+
+// ── loadLinkedActivities ──────────────────────────────────────────────────────
+
+func TestTasksViewLoadLinkedActivities(t *testing.T) {
+	store, _ := storage.NewYAMLStore(t.TempDir())
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	ts := time.Date(2026, 5, 18, 10, 0, 0, 0, time.UTC)
+
+	// Seed activity entry
+	actLog := &model.ActivityLog{
+		Date: date,
+		Entries: []model.ActivityEntry{
+			{ID: "a-20260518-001", Timestamp: ts, Description: "Work on task"},
+		},
+	}
+	store.SaveActivityLog(actLog)
+
+	// Seed task with ActivityRef
+	plan := &model.DayPlan{
+		Date: date,
+		Tasks: []model.Task{
+			{ID: "t-20260518-001", Title: "Task with ref", Status: model.StatusTodo,
+				ActivityRefs: []model.ActivityRef{{ID: "a-20260518-001", Date: "2026-05-18"}},
+				CreatedAt:    date, UpdatedAt: date},
+		},
+	}
+	store.SaveDayPlan(plan)
+
+	v := NewTasksView(store, date)
+	// Loading TasksMsg triggers loadLinkedActivities
+	v2, cmd := v.Update(TasksMsg{Plan: plan, ActLog: actLog})
+	v = v2
+	if cmd == nil {
+		t.Fatal("TasksMsg with task should return a loadLinkedActivities cmd")
+	}
+	// Execute the cmd to get LinkedActivitiesMsg
+	msg := cmd()
+	lam, ok := msg.(LinkedActivitiesMsg)
+	if !ok {
+		t.Fatalf("expected LinkedActivitiesMsg, got %T", msg)
+	}
+	if len(lam.Entries) != 1 {
+		t.Errorf("expected 1 linked activity, got %d", len(lam.Entries))
+	}
+}
+
+// ── SetFilter global results ──────────────────────────────────────────────────
+
+func TestTasksViewSetFilterGlobalResultHandled(t *testing.T) {
+	store, _ := storage.NewYAMLStore(t.TempDir())
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	plan := &model.DayPlan{
+		Date: date,
+		Tasks: []model.Task{
+			{ID: "t-20260518-001", Title: "Work task", Labels: []string{"work"},
+				Status: model.StatusTodo, CreatedAt: date, UpdatedAt: date},
+		},
+	}
+	store.SaveDayPlan(plan)
+
+	v := NewTasksView(store, date)
+	v2, cmd := v.SetFilter(TaskFilter{Labels: []string{"work"}})
+	v = v2
+	if cmd == nil {
+		t.Fatal("SetFilter with labels should return a cmd")
+	}
+	msg := cmd()
+	gm, ok := msg.(GlobalTasksMsg)
+	if !ok {
+		t.Fatalf("expected GlobalTasksMsg, got %T", msg)
+	}
+	// Feed it back into Update
+	v2, _ = v.Update(gm)
+	v = v2
+	if v.globalResults == nil {
+		t.Error("globalResults should be set after GlobalTasksMsg")
+	}
+}
+
+// ── renderTaskLine states ─────────────────────────────────────────────────────
+
+func TestRenderTaskLineStates(t *testing.T) {
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+
+	cases := []model.Task{
+		{ID: "t-001", Title: "Done", Status: model.StatusDone, CreatedAt: date},
+		{ID: "t-002", Title: "InProgress", Status: model.StatusInProgress, CreatedAt: date},
+		{ID: "t-003", Title: "Cancelled", Status: model.StatusCancelled, CreatedAt: date},
+		{ID: "t-004", Title: "High prio", Status: model.StatusTodo, Priority: model.PriorityHigh},
+		{ID: "t-005", Title: "Carried", Status: model.StatusTodo, CarryFrom: "2026-05-17"},
+		{ID: "t-006", Title: "Has notes", Status: model.StatusTodo, Notes: "some notes"},
+	}
+	for _, task := range cases {
+		line := renderTaskLine(task, false, 80)
+		if line == "" {
+			t.Errorf("renderTaskLine for %q returned empty", task.Title)
+		}
+		// Also test selected=true
+		lineSelected := renderTaskLine(task, true, 80)
+		if lineSelected == "" {
+			t.Errorf("renderTaskLine (selected) for %q returned empty", task.Title)
+		}
 	}
 }

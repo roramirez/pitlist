@@ -2,6 +2,8 @@ package storage
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -493,5 +495,160 @@ func TestGetTaskByIDNotFound(t *testing.T) {
 	_, _, err := s.GetTaskByID("t-20260101-999")
 	if err == nil {
 		t.Error("expected error for missing task")
+	}
+}
+
+// ── GetActivityLog corrupt YAML ───────────────────────────────────────────────
+
+func TestGetActivityLogCorruptYAML(t *testing.T) {
+	s := newTestStore(t)
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+
+	// Write invalid YAML to the activity file path
+	path := fmt.Sprintf("%s/activity/2026-05-18.yaml", s.dataDir)
+	if err := os.WriteFile(path, []byte("{{invalid yaml"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	_, err := s.GetActivityLog(date)
+	if err == nil {
+		t.Error("expected error for corrupt activity YAML")
+	}
+}
+
+// ── GetDayPlan corrupt YAML ───────────────────────────────────────────────────
+
+func TestGetDayPlanCorruptYAML(t *testing.T) {
+	s := newTestStore(t)
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+
+	// Write invalid YAML to the day file path
+	path := fmt.Sprintf("%s/days/2026-05-18.yaml", s.dataDir)
+	if err := os.WriteFile(path, []byte("{{invalid yaml"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	_, err := s.GetDayPlan(date)
+	if err == nil {
+		t.Error("expected error for corrupt day YAML")
+	}
+}
+
+// ── GetActivitiesByRefs with invalid date in ref ──────────────────────────────
+
+func TestGetActivitiesByRefsInvalidDate(t *testing.T) {
+	s := newTestStore(t)
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+
+	refs := []model.ActivityRef{
+		{ID: "a-20260518-001", Date: "not-a-date"},
+	}
+	results, err := s.GetActivitiesByRefs(refs, date)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 0 {
+		t.Errorf("expected 0 results for invalid date ref, got %d", len(results))
+	}
+}
+
+// ── SaveDayPlan write error ───────────────────────────────────────────────────
+
+func TestSaveDayPlanWriteError(t *testing.T) {
+	dir := t.TempDir()
+	s, _ := NewYAMLStore(dir)
+
+	daysDir := filepath.Join(dir, "days")
+	if err := os.Chmod(daysDir, 0555); err != nil {
+		t.Skip("cannot chmod:", err)
+	}
+	defer os.Chmod(daysDir, 0755)
+
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	plan := &model.DayPlan{Date: date, Tasks: []model.Task{}}
+	if err := s.SaveDayPlan(plan); err == nil {
+		t.Error("expected error writing to read-only directory")
+	}
+}
+
+// ── SaveActivityLog write error ───────────────────────────────────────────────
+
+func TestSaveActivityLogWriteError(t *testing.T) {
+	dir := t.TempDir()
+	s, _ := NewYAMLStore(dir)
+
+	actDir := filepath.Join(dir, "activity")
+	if err := os.Chmod(actDir, 0555); err != nil {
+		t.Skip("cannot chmod:", err)
+	}
+	defer os.Chmod(actDir, 0755)
+
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	al := &model.ActivityLog{Date: date, Entries: []model.ActivityEntry{}}
+	if err := s.SaveActivityLog(al); err == nil {
+		t.Error("expected error writing to read-only directory")
+	}
+}
+
+// ── ListTasks / ListActivity skip non-yaml and bad-date files ─────────────────
+
+func TestListTasksSkipsNonYAMLFiles(t *testing.T) {
+	dir := t.TempDir()
+	s, _ := NewYAMLStore(dir)
+
+	// Drop a non-yaml file and a yaml with invalid date name into the days dir
+	os.WriteFile(filepath.Join(dir, "days", "README.txt"), []byte("not yaml"), 0644)
+	os.WriteFile(filepath.Join(dir, "days", "not-a-date.yaml"), []byte("{}"), 0644)
+
+	results, err := s.ListTasks(TaskFilter{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	_ = results // just must not crash
+}
+
+func TestListActivitySkipsNonYAMLFiles(t *testing.T) {
+	dir := t.TempDir()
+	s, _ := NewYAMLStore(dir)
+
+	os.WriteFile(filepath.Join(dir, "activity", "README.txt"), []byte("not yaml"), 0644)
+	os.WriteFile(filepath.Join(dir, "activity", "not-a-date.yaml"), []byte("{}"), 0644)
+
+	results, err := s.ListActivity(ActivityFilter{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	_ = results
+}
+
+// ── GetActivitiesByRefs sort path ─────────────────────────────────────────────
+
+func TestGetActivitiesByRefsSortsByTimestamp(t *testing.T) {
+	s := newTestStore(t)
+	d1 := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	d2 := time.Date(2026, 5, 19, 0, 0, 0, 0, time.UTC)
+	ts1 := time.Date(2026, 5, 18, 10, 0, 0, 0, time.UTC)
+	ts2 := time.Date(2026, 5, 19, 8, 0, 0, 0, time.UTC)
+
+	s.SaveActivityLog(&model.ActivityLog{Date: d1, Entries: []model.ActivityEntry{
+		{ID: "a-20260518-001", Timestamp: ts1, Description: "First"},
+	}})
+	s.SaveActivityLog(&model.ActivityLog{Date: d2, Entries: []model.ActivityEntry{
+		{ID: "a-20260519-001", Timestamp: ts2, Description: "Second"},
+	}})
+
+	refs := []model.ActivityRef{
+		{ID: "a-20260519-001", Date: "2026-05-19"},
+		{ID: "a-20260518-001", Date: "2026-05-18"},
+	}
+	results, err := s.GetActivitiesByRefs(refs, d1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+	if !results[0].Timestamp.Before(results[1].Timestamp) {
+		t.Error("results should be sorted by timestamp ascending")
 	}
 }

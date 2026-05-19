@@ -802,3 +802,14 @@ func TestPrintDayHeader(t *testing.T) {
 	printDayHeader(t0.AddDate(0, 0, -1)) // overdue
 	printDayHeader(t0.AddDate(0, 0, 3))  // future (no tag)
 }
+
+// ── carryTask error paths ─────────────────────────────────────────────────────
+
+func TestCarryCmdNotFound(t *testing.T) {
+	setupTest(t)
+	cmd := newCarryCmd()
+	cmd.SetArgs([]string{"t-nonexistent-999"})
+	if err := cmd.Execute(); err == nil {
+		t.Error("expected error for non-existent task ID")
+	}
+}

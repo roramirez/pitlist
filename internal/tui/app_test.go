@@ -267,6 +267,43 @@ func TestAppUpdateFilterApplied(t *testing.T) {
 	}
 }
 
+func TestAppViewSearchNavigateMode(t *testing.T) {
+	// renderStatusBar has a branch for search tab with inputFocused=false
+	app := newTestApp(t)
+	m, _ := app.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	app = m.(App)
+
+	// Switch to search tab (inputFocused starts true)
+	m, _ = app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'4'}})
+	app = m.(App)
+
+	// Force inputFocused=false by injecting a result (with a real task) then pressing down
+	task := &model.Task{ID: "t-20260518-001", Title: "T", Status: model.StatusTodo}
+	app.searchView, _ = app.searchView.Update(views.SearchResultsMsg{
+		Results: []views.SearchResult{{Kind: views.SearchResultTask, Task: task}},
+	})
+	app.searchView, _ = app.searchView.Update(tea.KeyMsg{Type: tea.KeyDown})
+
+	out := app.View()
+	if out == "" {
+		t.Error("View in search navigate mode returned empty")
+	}
+}
+
+func TestAppViewActivityAndAgendaTabs(t *testing.T) {
+	app := newTestApp(t)
+	m, _ := app.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	app = m.(App)
+
+	for _, key := range []rune{'2', '3'} {
+		m2, _ := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{key}})
+		out := m2.(App).View()
+		if out == "" {
+			t.Errorf("tab %c: View returned empty", key)
+		}
+	}
+}
+
 func TestAppUpdateTasksMsg(t *testing.T) {
 	app := newTestApp(t)
 	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
@@ -282,4 +319,84 @@ func TestAppUpdateActivityMsg(t *testing.T) {
 	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
 	m, _ := app.Update(views.ActivityMsg{Log: &model.ActivityLog{Date: date}})
 	_ = m.(App)
+}
+
+// ── handleKey "/" on non-tasks tab is a no-op ─────────────────────────────────
+
+func TestAppHandleKeySlashOnNonTasksTab(t *testing.T) {
+	app := newTestApp(t)
+	// Switch to activity tab first
+	m, _ := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
+	app = m.(App)
+	// "/" on activity tab should not enable filterMode
+	m, _ = app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	app = m.(App)
+	if app.filterMode {
+		t.Error("filterMode should not activate on non-tasks tab")
+	}
+}
+
+// ── handleKey dispatches to activity/agenda views ────────────────────────────
+
+func TestAppHandleKeyDispatchToActivityView(t *testing.T) {
+	app := newTestApp(t)
+	m, _ := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
+	app = m.(App)
+	// Send a key that activity view handles (j = move cursor)
+	m, _ = app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	_ = m.(App) // must not panic
+}
+
+func TestAppHandleKeyDispatchToAgendaView(t *testing.T) {
+	app := newTestApp(t)
+	m, _ := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'3'}})
+	app = m.(App)
+	m, _ = app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	_ = m.(App)
+}
+
+// ── View on search tab with inputFocused=true (renderStatusBar branch) ────────
+
+func TestAppViewSearchTabInputFocused(t *testing.T) {
+	app := newTestApp(t)
+	m, _ := app.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	app = m.(App)
+	// Switch to search tab; inputFocused defaults to true
+	m, _ = app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'4'}})
+	app = m.(App)
+	if !app.searchView.IsInputActive() {
+		t.Fatal("expected search input to be active")
+	}
+	out := app.View()
+	if out == "" {
+		t.Error("View on search tab with input focused returned empty")
+	}
+}
+
+// ── filterMode non-key blink passthrough ─────────────────────────────────────
+
+func TestAppUpdateFilterModeBlinkPassthrough(t *testing.T) {
+	app := newTestApp(t)
+	// Activate filter mode
+	m, _ := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	app = m.(App)
+	if !app.filterMode {
+		t.Fatal("expected filterMode=true")
+	}
+	// Send a non-key message (WindowSizeMsg) while in filter mode
+	m, _ = app.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	_ = m.(App) // must not panic
+}
+
+// ── Update delegates non-key to active tab ────────────────────────────────────
+
+func TestAppUpdateDelegatesWindowSizeToActiveViews(t *testing.T) {
+	for _, key := range []rune{'1', '2', '3', '4'} {
+		app := newTestApp(t)
+		m, _ := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{key}})
+		app = m.(App)
+		// WindowSizeMsg is a non-key, delegated to current tab view
+		m, _ = app.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+		_ = m.(App)
+	}
 }

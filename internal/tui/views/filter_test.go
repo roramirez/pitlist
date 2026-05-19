@@ -162,6 +162,15 @@ func TestFilterViewApplyAllOff(t *testing.T) {
 	}
 }
 
+func TestFilterViewView(t *testing.T) {
+	v := NewFilterView()
+	_ = v.Activate()
+	out := v.View()
+	if out == "" {
+		t.Error("View returned empty string")
+	}
+}
+
 func TestFilterViewInactiveIgnoresKeys(t *testing.T) {
 	v := NewFilterView()
 	// Not active — update should be a no-op
@@ -173,4 +182,81 @@ func TestFilterViewInactiveIgnoresKeys(t *testing.T) {
 	if v.IsActive() {
 		t.Error("should remain inactive")
 	}
+}
+
+// ── label input forwarding ────────────────────────────────────────────────────
+
+func TestFilterViewLabelInputForwarding(t *testing.T) {
+	v := NewFilterView()
+	_ = v.Activate()
+
+	// Tab once to labels field (focusIdx=1)
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyTab})
+	v = v2
+	if v.focusIdx != 1 {
+		t.Fatalf("expected focusIdx=1, got %d", v.focusIdx)
+	}
+
+	// Send a rune key → forwarded to labelInput, no panic, focusIdx unchanged
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+	v = v2
+	if v.focusIdx != 1 {
+		t.Errorf("focusIdx should stay 1, got %d", v.focusIdx)
+	}
+}
+
+// ── apply with labels ─────────────────────────────────────────────────────────
+
+func TestFilterViewApplyWithLabels(t *testing.T) {
+	v := NewFilterView()
+	_ = v.Activate()
+
+	// Tab to labels field
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyTab})
+	v = v2
+
+	// Type "work auth"
+	for _, ch := range []rune{'w', 'o', 'r', 'k', ' ', 'a', 'u', 't', 'h'} {
+		v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{ch}})
+		v = v2
+	}
+
+	// enter applies the filter
+	v2, cmd := v.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	v = v2
+	if v.IsActive() {
+		t.Error("expected inactive after enter")
+	}
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd")
+	}
+	msg := cmd()
+	applied, ok := msg.(FilterAppliedMsg)
+	if !ok {
+		t.Fatalf("expected FilterAppliedMsg, got %T", msg)
+	}
+	if len(applied.Filter.Labels) != 2 {
+		t.Fatalf("expected 2 labels, got %d: %v", len(applied.Filter.Labels), applied.Filter.Labels)
+	}
+	if applied.Filter.Labels[0] != "work" || applied.Filter.Labels[1] != "auth" {
+		t.Errorf("labels = %v, want [work auth]", applied.Filter.Labels)
+	}
+}
+
+// ── Update key forwarding to labelInput (focusIdx=1) ─────────────────────────
+
+func TestFilterViewLabelInputKeyForwarding(t *testing.T) {
+	v := NewFilterView()
+	_ = v.Activate()
+
+	// Tab to labelInput field
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyTab})
+	v = v2
+	if v.focusIdx != 1 {
+		t.Fatalf("expected focusIdx=1, got %d", v.focusIdx)
+	}
+
+	// Typing a rune should be forwarded to labelInput — must not panic
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+	v = v2
 }

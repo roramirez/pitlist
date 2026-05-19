@@ -1,6 +1,7 @@
 package views
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -323,5 +324,128 @@ func TestAgendaAdjustScroll(t *testing.T) {
 	v.adjustScroll()
 	if v.scroll < 1 {
 		t.Errorf("scroll should advance when cursor is beyond window, got %d", v.scroll)
+	}
+}
+
+// ── adjustScroll cursor < scroll ─────────────────────────────────────────────
+
+func TestAgendaAdjustScrollCursorBeforeWindow(t *testing.T) {
+	v := AgendaView{height: 10, scroll: 5, cursor: 2}
+	v.adjustScroll()
+	if v.scroll != 2 {
+		t.Errorf("scroll should be set to cursor=2, got %d", v.scroll)
+	}
+}
+
+// ── View scroll indicator ─────────────────────────────────────────────────────
+
+func TestAgendaViewViewScrollIndicator(t *testing.T) {
+	store := newTestAgendaStore(t)
+	v := NewAgendaView(store)
+	today := agendaToday()
+
+	// Inject 25 items so len(items) > visibleLines (height-6 = 4 for height=10)
+	items := make([]agendaItem, 25)
+	for i := range items {
+		task := model.Task{ID: "t-" + today.Format("20060102") + "-" + string(rune('a'+i)),
+			Title: "Task", Status: model.StatusTodo}
+		items[i] = agendaItem{task: &task, date: today}
+	}
+	v2, _ := v.Update(AgendaLoadedMsg{items: items})
+	v = v2
+
+	out := v.View(80, 10)
+	if out == "" {
+		t.Error("View with many items returned empty")
+	}
+}
+
+// ── handleKey "l" and "right" ─────────────────────────────────────────────────
+
+func TestAgendaViewHandleKeyRight(t *testing.T) {
+	store := newTestAgendaStore(t)
+	v := NewAgendaView(store)
+	today := agendaToday()
+
+	task := model.Task{ID: "t-001", Title: "Task", Status: model.StatusTodo}
+	v2, _ := v.Update(AgendaLoadedMsg{items: []agendaItem{{task: &task, date: today}}})
+	v = v2
+
+	_, cmd := v.Update(tea.KeyMsg{Type: tea.KeyRight})
+	if cmd == nil {
+		t.Fatal("right arrow should return a navigate cmd")
+	}
+	msg := cmd()
+	if _, ok := msg.(AgendaNavigateMsg); !ok {
+		t.Errorf("expected AgendaNavigateMsg, got %T", msg)
+	}
+}
+
+// ── loadItems excludes cancelled ─────────────────────────────────────────────
+
+func TestAgendaViewLoadItemsExcludesCancelled(t *testing.T) {
+	store := newTestAgendaStore(t)
+	today := agendaToday()
+
+	plan := &model.DayPlan{
+		Date: today,
+		Tasks: []model.Task{
+			{ID: "t-cancelled", Title: "Cancelled", Status: model.StatusCancelled, CreatedAt: today, UpdatedAt: today},
+			{ID: "t-todo", Title: "Pending", Status: model.StatusTodo, CreatedAt: today, UpdatedAt: today},
+		},
+	}
+	store.SaveDayPlan(plan)
+
+	v := NewAgendaView(store)
+	cmd := v.Load()
+	if cmd == nil {
+		t.Fatal("Load should return a cmd")
+	}
+	msg := cmd()
+	loaded, ok := msg.(AgendaLoadedMsg)
+	if !ok {
+		t.Fatalf("expected AgendaLoadedMsg, got %T", msg)
+	}
+	for _, item := range loaded.items {
+		if item.task.Status == model.StatusCancelled {
+			t.Error("cancelled task should be excluded from agenda")
+		}
+	}
+}
+
+func TestAgendaViewHandleKeyL(t *testing.T) {
+	store := newTestAgendaStore(t)
+	v := NewAgendaView(store)
+
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	task := model.Task{ID: "t-001", Title: "T", Status: model.StatusTodo}
+	v2, _ := v.Update(AgendaLoadedMsg{items: []agendaItem{{task: &task, date: date}}})
+	v = v2
+
+	_, cmd := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
+	if cmd == nil {
+		t.Fatal("l key should return navigate cmd")
+	}
+}
+
+// ── View visibleLines fallback ────────────────────────────────────────────────
+
+func TestAgendaViewViewSmallHeight(t *testing.T) {
+	store := newTestAgendaStore(t)
+	v := NewAgendaView(store)
+
+	date := agendaToday()
+	tasks := make([]agendaItem, 25)
+	for i := range tasks {
+		tc := model.Task{ID: fmt.Sprintf("t-%03d", i), Title: "T", Status: model.StatusTodo}
+		tasks[i] = agendaItem{task: &tc, date: date}
+	}
+	v2, _ := v.Update(AgendaLoadedMsg{items: tasks})
+	v = v2
+
+	// height=3 → bodyHeight triggers visibleLines fallback to 20
+	out := v.View(80, 3)
+	if out == "" {
+		t.Error("View with small height returned empty")
 	}
 }

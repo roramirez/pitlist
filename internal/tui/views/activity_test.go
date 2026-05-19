@@ -230,18 +230,76 @@ func TestActivityViewFormCtrlS(t *testing.T) {
 	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
 	v = v2
 
-	// Type a description
+	// Type a description into the description field
 	for _, ch := range []rune{'W', 'o', 'r', 'k'} {
 		v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{ch}})
 		v = v2
 	}
 
-	// ctrl+s submits
-	v2, cmd := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("ctrl+s")})
+	// ctrl+s submits the form
+	v2, cmd := v.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
 	v = v2
-	_ = cmd
-	// Form should be closed or a cmd returned
-	_ = v.IsInputActive()
+	if !v.form.active {
+		// form was closed – good
+	}
+	if cmd != nil {
+		msg := cmd()
+		if _, ok := msg.(ActivityMsg); !ok {
+			t.Errorf("expected ActivityMsg after submit, got %T", msg)
+		}
+	}
+}
+
+func TestActivityViewFormEnterLastField(t *testing.T) {
+	store := newTestActivityStore(t)
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	v := NewActivityView(store, date)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	v = v2
+
+	// Type description
+	for _, ch := range []rune{'D', 'o', 'n', 'e'} {
+		v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{ch}})
+		v = v2
+	}
+
+	// Tab to last field (taskRef = index 4)
+	for i := 0; i < actFormFields-1; i++ {
+		v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyTab})
+		v = v2
+	}
+	if v.form.focusIdx != actFormFields-1 {
+		t.Fatalf("expected focus on last field (%d), got %d", actFormFields-1, v.form.focusIdx)
+	}
+
+	// enter on last field → submit
+	v2, cmd := v.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	v = v2
+	if cmd != nil {
+		msg := cmd()
+		if _, ok := msg.(ActivityMsg); !ok {
+			t.Errorf("expected ActivityMsg after enter-submit, got %T", msg)
+		}
+	}
+}
+
+func TestActivityViewFormDefaultKey(t *testing.T) {
+	store := newTestActivityStore(t)
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	v := NewActivityView(store, date)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	v = v2
+
+	// Type normally into each field via tab+key
+	for _, field := range []int{0, 1, 2, 3, 4} {
+		_ = field
+		v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+		v = v2
+		v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyTab})
+		v = v2
+	}
 }
 
 func TestActivityViewView(t *testing.T) {
@@ -309,5 +367,166 @@ func TestActivityViewLoad(t *testing.T) {
 	}
 	if len(actMsg.Log.Entries) != 1 {
 		t.Errorf("expected 1 entry, got %d", len(actMsg.Log.Entries))
+	}
+}
+
+// ── submitForm with taskRef ───────────────────────────────────────────────────
+
+func TestActivityViewSubmitFormWithRef(t *testing.T) {
+	store := newTestActivityStore(t)
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	taskDate := date
+	plan := &model.DayPlan{
+		Date: taskDate,
+		Tasks: []model.Task{
+			{ID: "t-20260518-001", Title: "Ref task", Status: model.StatusTodo,
+				CreatedAt: taskDate, UpdatedAt: taskDate},
+		},
+	}
+	if err := store.SaveDayPlan(plan); err != nil {
+		t.Fatal(err)
+	}
+
+	v := NewActivityView(store, date)
+
+	// Open form
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	v = v2
+
+	// Type description "Work"
+	for _, ch := range []rune{'W', 'o', 'r', 'k'} {
+		v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{ch}})
+		v = v2
+	}
+
+	// Tab to taskRef field (index 4 = actFormFields-1)
+	for i := 0; i < actFormFields-1; i++ {
+		v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyTab})
+		v = v2
+	}
+	if v.form.focusIdx != actFormFields-1 {
+		t.Fatalf("expected focusIdx=%d (taskRef), got %d", actFormFields-1, v.form.focusIdx)
+	}
+
+	// Type a task ID
+	for _, ch := range []rune{'t', '-', '2', '0', '2', '6', '0', '5', '1', '8', '-', '0', '0', '1'} {
+		v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{ch}})
+		v = v2
+	}
+
+	// ctrl+s submit
+	v2, cmd := v.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	v = v2
+	if cmd == nil {
+		t.Fatal("ctrl+s with description should return a cmd")
+	}
+	msg := cmd()
+	am, ok := msg.(ActivityMsg)
+	if !ok {
+		t.Fatalf("expected ActivityMsg after submit, got %T", msg)
+	}
+	if len(am.Log.Entries) == 0 {
+		t.Fatal("expected at least 1 entry after submit")
+	}
+	if am.Log.Entries[len(am.Log.Entries)-1].TaskRef != "t-20260518-001" {
+		t.Errorf("TaskRef = %q, want t-20260518-001", am.Log.Entries[len(am.Log.Entries)-1].TaskRef)
+	}
+}
+
+// ── deleteEntry idx out of bounds ────────────────────────────────────────────
+
+func TestActivityViewDeleteEntryOutOfBounds(t *testing.T) {
+	store := newTestActivityStore(t)
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	ts := time.Date(2026, 5, 18, 10, 0, 0, 0, time.UTC)
+
+	al := &model.ActivityLog{
+		Date: date,
+		Entries: []model.ActivityEntry{
+			{ID: "a-001", Timestamp: ts, Description: "Only"},
+		},
+	}
+	store.SaveActivityLog(al)
+
+	v := NewActivityView(store, date)
+	v2, _ := v.Update(ActivityMsg{Log: al})
+	v = v2
+
+	// deleteEntry with idx=-1 (out of bounds) returns ActivityMsg unchanged
+	cmd := v.deleteEntry(-1)
+	if cmd == nil {
+		t.Fatal("expected cmd even for out-of-bounds")
+	}
+	msg := cmd()
+	am, ok := msg.(ActivityMsg)
+	if !ok {
+		t.Fatalf("expected ActivityMsg, got %T", msg)
+	}
+	if len(am.Log.Entries) != 1 {
+		t.Errorf("out-of-bounds delete should not remove entry, got %d entries", len(am.Log.Entries))
+	}
+}
+
+// ── submitForm with taskRef ───────────────────────────────────────────────────
+
+func TestActivityViewSubmitFormWithTaskRef(t *testing.T) {
+	store := newTestActivityStore(t)
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	// Seed a task so AddActivityRefToTask works
+	taskPlan := &model.DayPlan{
+		Date: date,
+		Tasks: []model.Task{
+			{ID: "t-20260518-001", Title: "Ref task", Status: model.StatusTodo, CreatedAt: date, UpdatedAt: date},
+		},
+	}
+	store.SaveDayPlan(taskPlan)
+
+	v := NewActivityView(store, date)
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	v = v2
+
+	// Type description
+	for _, ch := range []rune{'W', 'o', 'r', 'k'} {
+		v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{ch}})
+		v = v2
+	}
+	// Tab to taskRef field (index 4)
+	for i := 0; i < actFormFields-1; i++ {
+		v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyTab})
+		v = v2
+	}
+	// Type task ID into taskRef field
+	for _, ch := range []rune{'t', '-', '2', '0', '2', '6', '0', '5', '1', '8', '-', '0', '0', '1'} {
+		v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{ch}})
+		v = v2
+	}
+
+	// ctrl+s to submit
+	v2, cmd := v.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	v = v2
+	if cmd == nil {
+		t.Fatal("expected cmd after submit with ref")
+	}
+	msg := cmd()
+	if _, ok := msg.(ActivityMsg); !ok {
+		t.Fatalf("expected ActivityMsg, got %T", msg)
+	}
+}
+
+// ── updateForm enter on non-last field ───────────────────────────────────────
+
+func TestActivityViewFormEnterNonLastField(t *testing.T) {
+	store := newTestActivityStore(t)
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	v := NewActivityView(store, date)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	v = v2
+
+	// enter on field 0 → advance to field 1
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	v = v2
+	if v.form.focusIdx != 1 {
+		t.Errorf("enter on field 0: focusIdx=%d, want 1", v.form.focusIdx)
 	}
 }

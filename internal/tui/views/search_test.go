@@ -322,3 +322,75 @@ func TestDateFromIDInvalid(t *testing.T) {
 		t.Error("expected non-zero time for short id")
 	}
 }
+
+// ── renderResult done/in-progress task ───────────────────────────────────────
+
+func TestSearchViewRenderResultDoneTask(t *testing.T) {
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	ts := date.Add(10 * time.Hour)
+
+	doneTask := &model.Task{ID: "t-001", Title: "Done task", Status: model.StatusDone}
+	inProgTask := &model.Task{ID: "t-002", Title: "In progress task", Status: model.StatusInProgress}
+
+	v := NewSearchView(nil)
+	v.results = []SearchResult{
+		{Kind: SearchResultTask, Task: doneTask, Date: date},
+		{Kind: SearchResultTask, Task: inProgTask, Date: date},
+		{Kind: SearchResultActivity, Activity: &model.ActivityEntry{
+			ID: "a-001", Timestamp: ts, Description: "Work", DurationMin: 30,
+		}, Date: date},
+	}
+	v.inputFocused = false
+
+	out := v.View(80, 20)
+	if out == "" {
+		t.Error("View with done/in-progress tasks returned empty")
+	}
+}
+
+// ── navigate with no results / cursor out of range ───────────────────────────
+
+func TestSearchViewNavigateNoResults(t *testing.T) {
+	v := NewSearchView(nil)
+	v.inputFocused = false
+	v.results = []SearchResult{}
+	v.cursor = 0
+
+	cmd := v.navigate()
+	if cmd != nil {
+		t.Error("navigate() with no results should return nil cmd")
+	}
+
+	// cursor out of range
+	v.results = make([]SearchResult, 2)
+	v.cursor = 5
+	cmd = v.navigate()
+	if cmd != nil {
+		t.Error("navigate() with cursor >= len(results) should return nil cmd")
+	}
+}
+
+// ── ctrl+h backspace ─────────────────────────────────────────────────────────
+
+func TestSearchViewCtrlHBackspace(t *testing.T) {
+	v := NewSearchView(nil)
+	v.query = "hello"
+
+	msg := tea.KeyMsg{Type: tea.KeyCtrlH}
+	v2, _ := v.Update(msg)
+	v = v2
+	if v.query != "hell" {
+		t.Errorf("ctrl+h: expected 'hell', got %q", v.query)
+	}
+}
+
+// ── Update WindowSizeMsg ──────────────────────────────────────────────────────
+
+func TestSearchViewWindowSizeMsg(t *testing.T) {
+	v := NewSearchView(nil)
+	v2, _ := v.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	v = v2
+	if v.width != 80 || v.height != 24 {
+		t.Errorf("width/height not set: %dx%d", v.width, v.height)
+	}
+}
