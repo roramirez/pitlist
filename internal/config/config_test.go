@@ -63,9 +63,6 @@ func TestLoadDefaults(t *testing.T) {
 	if !cfg.Git.AutoCommit {
 		t.Error("Git.AutoCommit default should be true")
 	}
-	if cfg.TUI.Pager != "day" {
-		t.Errorf("TUI.Pager default = %q, want 'day'", cfg.TUI.Pager)
-	}
 	if cfg.TUI.ShowDoneTasks {
 		t.Error("TUI.ShowDoneTasks default should be false")
 	}

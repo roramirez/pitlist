@@ -126,7 +126,7 @@ All commands work without the TUI. The TUI launches when no subcommand is given.
 ### Tasks
 
 ```bash
-pitlist add "Title" [--label work] [--priority high] [--due YYYY-MM-DD] [--date YYYY-MM-DD]
+pitlist add "Title" [--context work] [--label work] [--priority high] [--due YYYY-MM-DD] [--date YYYY-MM-DD]
 pitlist done <id>
 pitlist list                          # today, todo + in_progress
 pitlist list --label work             # all open work tasks across days
@@ -154,7 +154,7 @@ pitlist agenda --label work
 ### Activity log
 
 ```bash
-pitlist log "Description" [--tag debugging] [--ref t-20260518-001] [--duration 45]
+pitlist log "Description" [--tag debugging] [--ref t-20260518-001] [--duration 45] [--date YYYY-MM-DD]
 pitlist log list                      # today
 pitlist log list --date YYYY-MM-DD
 pitlist log list --tag debugging
@@ -319,9 +319,9 @@ Full-text and tag search across all tasks and activity entries.
 **Two modes:**
 
 - **Input mode** (default): type to search. `↓` or `enter` switches to navigate mode.
-- **Navigate mode**: `j`/`k` to move cursor, `enter` to jump to the day in Tasks or Activity tab. `i` or `esc` returns to input mode.
+- **Navigate mode**: `j`/`k` to move cursor, `enter` to jump to the day in Tasks or Activity tab. `i`, `esc`, or `/` returns to input mode.
 
-Single-word queries are tried as label/tag first, then as text. Multi-word queries are always text search.
+Single-word queries without `#` search both text and tag/label simultaneously. `#tag` searches strictly by tag/label. Multi-word queries are text-only.
 
 Results are grouped: Tasks first, then Activity entries. Each result shows its date.
 
@@ -339,7 +339,6 @@ git:
   auto_commit: true
 tui:
   show_done_tasks: false
-  pager: day                # day | week
 ```
 
 Override data dir at runtime: `PITLIST_DATA_DIR=/path/to/dir pitlist`

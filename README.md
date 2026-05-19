@@ -73,6 +73,7 @@ Launch with `pitlist` (no subcommand). Four tabs:
 | `L` | Log activity linked to this task |
 | `D` | Delete task |
 | `/` | Filter (searches all days) |
+| `w` | Toggle week view |
 
 ### Task detail pane
 
@@ -107,6 +108,7 @@ n notes  L log activity  d done  c carry
 | Key | Action |
 |---|---|
 | `h` / `l` | Previous / next day |
+| `j` / `k` | Move cursor |
 | `a` | Add entry |
 | `D` | Delete entry |
 
@@ -121,6 +123,7 @@ Shows all pending tasks in a ±7 day window. Days without pending tasks are hidd
 | `j` / `k` | Navigate |
 | `d` | Mark done |
 | `enter` | Jump to that day in Tasks |
+| `r` | Refresh |
 
 ### Search view (`4`)
 
@@ -130,7 +133,7 @@ Type to search. Results update in real time.
 - `#auth` — strict tag/label search only
 - `token refresh` — multi-word text search
 
-`↓` or `enter` switches to navigate mode. `i` or `esc` returns to input.
+`↓` or `enter` switches to navigate mode. `i`, `esc`, or `/` returns to input.
 
 ---
 
@@ -165,6 +168,7 @@ pitlist agenda --from 2026-05-01 --to 2026-05-31
 
 ```bash
 pitlist log "What I did" --tag debugging --ref t-20260519-001 --duration 45
+pitlist log "Yesterday's work" --date 2026-05-18 --tag auth
 pitlist log list                      # today
 pitlist log list --tag debugging --week
 pitlist log link a-20260519-001 t-20260519-001

@@ -12,8 +12,7 @@ type GitConfig struct {
 }
 
 type TUIConfig struct {
-	ShowDoneTasks bool   `mapstructure:"show_done_tasks"`
-	Pager         string `mapstructure:"pager"`
+	ShowDoneTasks bool `mapstructure:"show_done_tasks"`
 }
 
 type Config struct {
@@ -38,7 +37,6 @@ func Load() (*Config, error) {
 	viper.SetDefault("week_start", "monday")
 	viper.SetDefault("git.auto_commit", true)
 	viper.SetDefault("tui.show_done_tasks", false)
-	viper.SetDefault("tui.pager", "day")
 	viper.SetDefault("contexts", []string{"work", "personal", "other"})
 
 	_ = viper.ReadInConfig()
