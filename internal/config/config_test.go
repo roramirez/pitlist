@@ -83,3 +83,17 @@ func TestLoadEnvOverride(t *testing.T) {
 		t.Errorf("DataDir from env = %q, want %q", cfg.DataDir, tmpDir)
 	}
 }
+
+func TestLoadEmptyDataDirFallsBackToDefault(t *testing.T) {
+	// Setting PITLIST_DATA_DIR="" causes viper to emit an empty string,
+	// triggering the cfg.DataDir == "" fallback in Load().
+	t.Setenv("PITLIST_DATA_DIR", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.DataDir == "" {
+		t.Error("DataDir should have been set to defaultDataDir() as fallback")
+	}
+}
