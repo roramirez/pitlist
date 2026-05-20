@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/roramirez/pitlist/internal/model"
 	"github.com/roramirez/pitlist/internal/storage"
@@ -31,38 +30,12 @@ func newListCmd() *cobra.Command {
 				filter.Statuses = append(filter.Statuses, model.TaskStatus(s))
 			}
 
-			if week {
-				mon := weekStart(today())
-				sun := mon.AddDate(0, 0, 6)
-				filter.From = &mon
-				filter.To = &sun
-			} else if fromStr != "" || toStr != "" {
-				if fromStr != "" {
-					t, err := time.Parse("2006-01-02", fromStr)
-					if err != nil {
-						return fmt.Errorf("invalid --from: %w", err)
-					}
-					filter.From = &t
-				}
-				if toStr != "" {
-					t, err := time.Parse("2006-01-02", toStr)
-					if err != nil {
-						return fmt.Errorf("invalid --to: %w", err)
-					}
-					filter.To = &t
-				}
-			} else if date != "" {
-				d, err := time.Parse("2006-01-02", date)
-				if err != nil {
-					return fmt.Errorf("invalid --date: %w", err)
-				}
-				filter.From = &d
-				filter.To = &d
-			} else {
-				d := today()
-				filter.From = &d
-				filter.To = &d
+			from, to, err := parseDateRange(week, fromStr, toStr, date)
+			if err != nil {
+				return err
 			}
+			filter.From = &from
+			filter.To = &to
 
 			// Default: show todo + in_progress only
 			if len(filter.Statuses) == 0 {
@@ -96,13 +69,16 @@ func newListCmd() *cobra.Command {
 }
 
 func printTask(t *model.Task) {
-	check := "[ ]"
-	if t.Status == model.StatusDone {
+	var check string
+	switch t.Status {
+	case model.StatusDone:
 		check = "[x]"
-	} else if t.Status == model.StatusInProgress {
+	case model.StatusInProgress:
 		check = "[~]"
-	} else if t.Status == model.StatusCancelled {
+	case model.StatusCancelled:
 		check = "[-]"
+	default:
+		check = "[ ]"
 	}
 
 	labels := ""

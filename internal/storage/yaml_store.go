@@ -56,7 +56,7 @@ func (s *YAMLStore) SaveDayPlan(plan *model.DayPlan) error {
 	if err := os.WriteFile(path, data, 0644); err != nil {
 		return err
 	}
-	_ = s.git.autoCommit(path, "tasks: save "+plan.Date.Format("2006-01-02"))
+	_ = s.git.autoCommit(path, "tasks: save "+plan.Date.Format(model.DateFormat))
 	return nil
 }
 
@@ -66,11 +66,8 @@ func (s *YAMLStore) GetTaskByID(id string) (*model.Task, time.Time, error) {
 		return nil, time.Time{}, err
 	}
 	for _, e := range entries {
-		if !strings.HasSuffix(e.Name(), ".yaml") {
-			continue
-		}
-		date, err := time.Parse("2006-01-02", strings.TrimSuffix(e.Name(), ".yaml"))
-		if err != nil {
+		date, ok := parseDateFromFilename(e.Name())
+		if !ok {
 			continue
 		}
 		plan, err := s.GetDayPlan(date)
@@ -95,11 +92,8 @@ func (s *YAMLStore) ListTasks(filter TaskFilter) ([]*model.Task, error) {
 
 	var results []*model.Task
 	for _, e := range entries {
-		if !strings.HasSuffix(e.Name(), ".yaml") {
-			continue
-		}
-		date, err := time.Parse("2006-01-02", strings.TrimSuffix(e.Name(), ".yaml"))
-		if err != nil {
+		date, ok := parseDateFromFilename(e.Name())
+		if !ok {
 			continue
 		}
 		if filter.From != nil && date.Before(*filter.From) {
@@ -188,7 +182,7 @@ func (s *YAMLStore) SaveActivityLog(log *model.ActivityLog) error {
 	if err := os.WriteFile(path, data, 0644); err != nil {
 		return err
 	}
-	_ = s.git.autoCommit(path, "activity: save "+log.Date.Format("2006-01-02"))
+	_ = s.git.autoCommit(path, "activity: save "+log.Date.Format(model.DateFormat))
 	return nil
 }
 
@@ -200,11 +194,8 @@ func (s *YAMLStore) ListActivity(filter ActivityFilter) ([]*model.ActivityEntry,
 
 	var results []*model.ActivityEntry
 	for _, e := range entries {
-		if !strings.HasSuffix(e.Name(), ".yaml") {
-			continue
-		}
-		date, err := time.Parse("2006-01-02", strings.TrimSuffix(e.Name(), ".yaml"))
-		if err != nil {
+		date, ok := parseDateFromFilename(e.Name())
+		if !ok {
 			continue
 		}
 		if filter.From != nil && date.Before(*filter.From) {
@@ -283,7 +274,7 @@ func (s *YAMLStore) GetActivitiesByRefs(refs []model.ActivityRef, fallbackDate t
 
 	var out []*model.ActivityEntry
 	for dateStr, ids := range dateIDs {
-		date, err := time.Parse("2006-01-02", dateStr)
+		date, err := time.Parse(model.DateFormat, dateStr)
 		if err != nil {
 			continue
 		}
@@ -306,7 +297,7 @@ func (s *YAMLStore) GetActivitiesByRefs(refs []model.ActivityRef, fallbackDate t
 }
 
 func (s *YAMLStore) AddActivityRefToTask(taskID string, ref model.ActivityRef) error {
-	task, date, err := s.GetTaskByID(taskID)
+	_, date, err := s.GetTaskByID(taskID)
 	if err != nil {
 		return err
 	}
@@ -326,7 +317,6 @@ func (s *YAMLStore) AddActivityRefToTask(taskID string, ref model.ActivityRef) e
 			break
 		}
 	}
-	_ = task
 	return s.SaveDayPlan(plan)
 }
 
@@ -342,10 +332,18 @@ func NextActivityID(log *model.ActivityLog) string {
 
 // --- Helpers ---
 
+func parseDateFromFilename(name string) (time.Time, bool) {
+	if !strings.HasSuffix(name, ".yaml") {
+		return time.Time{}, false
+	}
+	d, err := time.Parse(model.DateFormat, strings.TrimSuffix(name, ".yaml"))
+	return d, err == nil
+}
+
 func (s *YAMLStore) dayPath(date time.Time) string {
-	return filepath.Join(s.dataDir, "days", date.Format("2006-01-02")+".yaml")
+	return filepath.Join(s.dataDir, "days", date.Format(model.DateFormat)+".yaml")
 }
 
 func (s *YAMLStore) activityPath(date time.Time) string {
-	return filepath.Join(s.dataDir, "activity", date.Format("2006-01-02")+".yaml")
+	return filepath.Join(s.dataDir, "activity", date.Format(model.DateFormat)+".yaml")
 }

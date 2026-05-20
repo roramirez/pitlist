@@ -11,6 +11,16 @@ type gitHelper struct {
 	enabled bool
 }
 
+// GitEnv returns the environment variables required for git commits.
+func GitEnv() []string {
+	return append(os.Environ(),
+		"GIT_AUTHOR_NAME=pitlist",
+		"GIT_AUTHOR_EMAIL=pitlist@local",
+		"GIT_COMMITTER_NAME=pitlist",
+		"GIT_COMMITTER_EMAIL=pitlist@local",
+	)
+}
+
 func newGitHelper(dataDir string) *gitHelper {
 	_, err := exec.LookPath("git")
 	return &gitHelper{dataDir: dataDir, enabled: err == nil}
@@ -37,12 +47,7 @@ func (g *gitHelper) autoCommit(path, message string) error {
 		return err
 	}
 	commit := exec.Command("git", "-C", g.dataDir, "commit", "-m", message)
-	commit.Env = append(os.Environ(),
-		"GIT_AUTHOR_NAME=pitlist",
-		"GIT_AUTHOR_EMAIL=pitlist@local",
-		"GIT_COMMITTER_NAME=pitlist",
-		"GIT_COMMITTER_EMAIL=pitlist@local",
-	)
+	commit.Env = GitEnv()
 	return commit.Run()
 }
 
@@ -65,11 +70,6 @@ func (g *gitHelper) ManualCommit() error {
 		return err
 	}
 	commit := exec.Command("git", "-C", g.dataDir, "commit", "-m", "pitlist: manual sync")
-	commit.Env = append(os.Environ(),
-		"GIT_AUTHOR_NAME=pitlist",
-		"GIT_AUTHOR_EMAIL=pitlist@local",
-		"GIT_COMMITTER_NAME=pitlist",
-		"GIT_COMMITTER_EMAIL=pitlist@local",
-	)
+	commit.Env = GitEnv()
 	return commit.Run()
 }

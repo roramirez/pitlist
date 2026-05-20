@@ -228,25 +228,19 @@ func (v SearchView) navigate() tea.Cmd {
 }
 
 func (v SearchView) View(width, height int) string {
-	bold := lipgloss.NewStyle().Bold(true)
-	muted := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	accent := lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
-
-	// Render the query line with a blinking cursor placeholder
-	queryDisplay := v.query
 	cursor := " "
 	if v.inputFocused {
-		cursor = accent.Render("█")
+		cursor = sAccent.Render("█")
 	}
-	inputLine := "  / " + queryDisplay + cursor
+	inputLine := "  / " + v.query + cursor
 
 	var lines []string
-	lines = append(lines, bold.Render("Search")+"  "+muted.Render("keyword or #tag across all days"))
+	lines = append(lines, sTitle.Render("Search")+"  "+sMuted.Render("keyword or #tag across all days"))
 	lines = append(lines, inputLine)
 	lines = append(lines, "")
 
 	if len(v.results) == 0 && strings.TrimSpace(v.query) != "" {
-		lines = append(lines, muted.Render("  No results."))
+		lines = append(lines, sMuted.Render("  No results."))
 	} else {
 		var prevKind SearchResultKind = -1
 		for i, r := range v.results {
@@ -254,16 +248,16 @@ func (v SearchView) View(width, height int) string {
 
 			if SearchResultKind(prevKind) != r.Kind {
 				if r.Kind == SearchResultTask {
-					lines = append(lines, muted.Render("  ── Tasks ──"))
+					lines = append(lines, sMuted.Render("  ── Tasks ──"))
 				} else {
-					lines = append(lines, muted.Render("  ── Activity ──"))
+					lines = append(lines, sMuted.Render("  ── Activity ──"))
 				}
 				prevKind = r.Kind
 			}
 
 			line := v.renderResult(r)
 			if selected {
-				line = lipgloss.NewStyle().Background(lipgloss.Color("236")).Bold(true).Render(line)
+				line = sSelected.Render(line)
 			}
 			lines = append(lines, line)
 		}
@@ -271,9 +265,9 @@ func (v SearchView) View(width, height int) string {
 
 	lines = append(lines, "")
 	if v.inputFocused {
-		lines = append(lines, muted.Render("  ↓/enter → navigate results  1/2/3/4 tabs"))
+		lines = append(lines, sMuted.Render("  ↓/enter → navigate results  1/2/3/4 tabs"))
 	} else {
-		lines = append(lines, muted.Render("  j/k navigate  enter → jump  esc/i → edit query  q quit"))
+		lines = append(lines, sMuted.Render("  j/k navigate  enter → jump  esc/i → edit query  q quit"))
 	}
 
 	content := strings.Join(lines, "\n")
@@ -287,11 +281,7 @@ func (v SearchView) View(width, height int) string {
 }
 
 func (v SearchView) renderResult(r SearchResult) string {
-	muted := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	accent := lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
-	orange := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
-
-	dateStr := muted.Render(r.Date.Format("Jan 02"))
+	dateStr := sMuted.Render(r.Date.Format("Jan 02"))
 
 	if r.Kind == SearchResultTask {
 		check := "[ ]"
@@ -299,31 +289,31 @@ func (v SearchView) renderResult(r SearchResult) string {
 		switch r.Task.Status {
 		case model.StatusDone:
 			check = "[x]"
-			title = muted.Render(title)
+			title = sMuted.Render(title)
 		case model.StatusInProgress:
 			check = "[~]"
 		}
 		labels := ""
 		if len(r.Task.Labels) > 0 {
-			labels = "  " + accent.Render("["+strings.Join(r.Task.Labels, ", ")+"]")
+			labels = "  " + sAccent.Render("["+strings.Join(r.Task.Labels, ", ")+"]")
 		}
 		return fmt.Sprintf("    %s %s%s  %s", check, title, labels, dateStr)
 	}
 
 	dur := ""
 	if r.Activity.DurationMin > 0 {
-		dur = orange.Render(fmt.Sprintf(" %dm", r.Activity.DurationMin))
+		dur = sCarried.Render(fmt.Sprintf(" %dm", r.Activity.DurationMin))
 	}
 	tags := ""
 	if len(r.Activity.Tags) > 0 {
-		tags = "  " + accent.Render("["+strings.Join(r.Activity.Tags, ", ")+"]")
+		tags = "  " + sAccent.Render("["+strings.Join(r.Activity.Tags, ", ")+"]")
 	}
 	ref := ""
 	if r.Activity.TaskRef != "" {
-		ref = "  " + muted.Render("→ "+r.Activity.TaskRef)
+		ref = "  " + sMuted.Render("→ "+r.Activity.TaskRef)
 	}
 	return fmt.Sprintf("    %s%s  %s%s%s  %s",
-		muted.Render(r.Activity.Timestamp.Local().Format("15:04")),
+		sMuted.Render(r.Activity.Timestamp.Local().Format("15:04")),
 		dur,
 		r.Activity.Description,
 		tags,

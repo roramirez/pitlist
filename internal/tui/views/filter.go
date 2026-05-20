@@ -142,14 +142,11 @@ func (v FilterView) apply() tea.Cmd {
 }
 
 func (v FilterView) View() string {
-	bold := lipgloss.NewStyle().Bold(true)
-	muted := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-
 	fieldLabel := func(idx int, label string) string {
 		if v.focusIdx == idx {
-			return bold.Render("> " + label)
+			return sTitle.Render("> " + label)
 		}
-		return muted.Render("  " + label)
+		return sMuted.Render("  " + label)
 	}
 
 	check := func(on bool) string {
@@ -164,12 +161,12 @@ func (v FilterView) View() string {
 	)
 
 	content := strings.Join([]string{
-		bold.Render("─── Filter ───"),
+		sTitle.Render("─── Filter ───"),
 		fieldLabel(0, "Search:") + "  " + v.search.View(),
 		fieldLabel(1, "Labels:") + "  " + v.labelInput.View(),
 		fieldLabel(2, "") + statusLine,
 		"",
-		muted.Render("  enter to apply  esc to cancel  tab next field"),
+		sMuted.Render("  enter to apply  esc to cancel  tab next field"),
 	}, "\n")
 
 	return lipgloss.NewStyle().

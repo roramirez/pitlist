@@ -911,8 +911,7 @@ func TestTasksViewViewDoneTask(t *testing.T) {
 // ── newQuickLogForm ───────────────────────────────────────────────────────────
 
 func TestNewQuickLogForm(t *testing.T) {
-	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
-	f := newQuickLogForm("t-20260518-001", date)
+	f := newQuickLogForm("t-20260518-001")
 	if f.taskID != "t-20260518-001" {
 		t.Errorf("taskID = %q, want t-20260518-001", f.taskID)
 	}

@@ -41,7 +41,7 @@ func newAddForm() addForm {
 
 	di := textinput.New()
 	di.CharLimit = 16
-	di.SetValue(time.Now().Format("2006-01-02T15:04"))
+	di.SetValue(time.Now().Format(model.DateTimeFormat))
 
 	ref := textinput.New()
 	ref.Placeholder = "task ID (optional)"
@@ -203,7 +203,7 @@ func (v ActivityView) focusField() (ActivityView, tea.Cmd) {
 			dur = d
 		}
 		ts := time.Now().Add(-time.Duration(dur) * time.Minute)
-		v.form.dateInput.SetValue(ts.Format("2006-01-02T15:04"))
+		v.form.dateInput.SetValue(ts.Format(model.DateTimeFormat))
 	}
 	switch v.form.focusIdx {
 	case 0:
@@ -240,7 +240,7 @@ func (v ActivityView) submitForm() tea.Cmd {
 
 	ts := time.Now().Add(-time.Duration(dur) * time.Minute)
 	if raw := strings.TrimSpace(v.form.dateInput.Value()); raw != "" {
-		if t, err := time.ParseInLocation("2006-01-02T15:04", raw, time.Local); err == nil {
+		if t, err := time.ParseInLocation(model.DateTimeFormat, raw, time.Local); err == nil {
 			ts = t
 		}
 	}
@@ -268,7 +268,7 @@ func (v ActivityView) submitForm() tea.Cmd {
 		if ref != "" {
 			_ = v.store.AddActivityRefToTask(ref, model.ActivityRef{
 				ID:   entry.ID,
-				Date: entryDate.Format("2006-01-02"),
+				Date: entryDate.Format(model.DateFormat),
 			})
 		}
 		return ActivityMsg{log}
@@ -276,10 +276,7 @@ func (v ActivityView) submitForm() tea.Cmd {
 }
 
 func (v ActivityView) View(width, height int) string {
-	muted := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	bold := lipgloss.NewStyle().Bold(true)
-
-	header := muted.Render("←") + "  " + bold.Render("Activity Log  "+v.date.Format("Mon Jan 02 2006")) + "  " + muted.Render("→")
+	header := sMuted.Render("←") + "  " + sTitle.Render("Activity Log  "+v.date.Format("Mon Jan 02 2006")) + "  " + sMuted.Render("→")
 	var lines []string
 	lines = append(lines, header, "")
 
@@ -289,7 +286,7 @@ func (v ActivityView) View(width, height int) string {
 	}
 
 	if v.log == nil || len(v.log.Entries) == 0 {
-		lines = append(lines, muted.Render("No entries. Press 'a' to add one."))
+		lines = append(lines, sMuted.Render("No entries. Press 'a' to add one."))
 	} else {
 		var totalMin int
 		for i, e := range v.log.Entries {
@@ -298,7 +295,7 @@ func (v ActivityView) View(width, height int) string {
 		}
 		if totalMin > 0 {
 			lines = append(lines, "")
-			lines = append(lines, muted.Render(fmt.Sprintf("Total logged: %dh %dm", totalMin/60, totalMin%60)))
+			lines = append(lines, sMuted.Render(fmt.Sprintf("Total logged: %dh %dm", totalMin/60, totalMin%60)))
 		}
 	}
 
@@ -313,24 +310,21 @@ func (v ActivityView) View(width, height int) string {
 }
 
 func (v ActivityView) renderForm() []string {
-	bold := lipgloss.NewStyle().Bold(true)
-	muted := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-
 	label := func(idx int, s string) string {
 		if v.form.focusIdx == idx {
-			return bold.Render("> " + s)
+			return sTitle.Render("> " + s)
 		}
-		return muted.Render("  " + s)
+		return sMuted.Render("  " + s)
 	}
 
 	return []string{
-		bold.Render("─── New Activity ───"),
+		sTitle.Render("─── New Activity ───"),
 		label(0, "Description:") + "  " + v.form.description.View(),
 		label(1, "Tags:       ") + "  " + v.form.tags.View(),
 		label(2, "Duration:   ") + "  " + v.form.duration.View(),
 		label(3, "Date:       ") + "  " + v.form.dateInput.View(),
 		label(4, "Task ref:   ") + "  " + v.form.taskRef.View(),
-		muted.Render("  tab next  ctrl+s save  esc cancel"),
+		sMuted.Render("  tab next  ctrl+s save  esc cancel"),
 		strings.Repeat("─", 40),
 	}
 }
@@ -345,24 +339,24 @@ func renderEntryLine(e model.ActivityEntry, selected bool) string {
 
 	tags := ""
 	if len(e.Tags) > 0 {
-		tags = lipgloss.NewStyle().Foreground(lipgloss.Color("63")).Render(" [" + strings.Join(e.Tags, ", ") + "]")
+		tags = sAccent.Render(" [" + strings.Join(e.Tags, ", ") + "]")
 	}
 
 	ref := ""
 	if e.TaskRef != "" {
-		ref = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(" → " + e.TaskRef)
+		ref = sMuted.Render(" → " + e.TaskRef)
 	}
 
 	line := fmt.Sprintf("  %s%s  %s%s%s",
-		lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(timeStr),
-		lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Render(dur),
+		sMuted.Render(timeStr),
+		sCarried.Render(dur),
 		e.Description,
 		tags,
 		ref,
 	)
 
 	if selected {
-		line = lipgloss.NewStyle().Background(lipgloss.Color("236")).Render(line)
+		line = sSelected.Render(line)
 	}
 	return line
 }

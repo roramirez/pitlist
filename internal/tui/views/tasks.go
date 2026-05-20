@@ -83,18 +83,15 @@ func (f taskForm) contextValue() string {
 
 // contextDisplay renders the selector for the context field.
 func (f taskForm) contextDisplay(focused bool) string {
-	accent := lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
-	muted := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-
 	label := "—"
 	if f.contextIdx >= 0 && f.contextIdx < len(f.contexts) {
 		label = f.contexts[f.contextIdx]
 	}
 
 	if focused {
-		return accent.Render("← ") + lipgloss.NewStyle().Bold(true).Render(label) + accent.Render(" →")
+		return sAccent.Render("← ") + sTitle.Render(label) + sAccent.Render(" →")
 	}
-	return muted.Render("  " + label)
+	return sMuted.Render("  " + label)
 }
 
 const quickLogFields = 4 // desc, tags, duration, date
@@ -109,8 +106,7 @@ type quickLogForm struct {
 	taskID    string // pre-filled, read-only
 }
 
-func newQuickLogForm(taskID string, defaultDate time.Time) quickLogForm {
-	_ = defaultDate
+func newQuickLogForm(taskID string) quickLogForm {
 	desc := textinput.New()
 	desc.Placeholder = "What did you do?"
 	desc.CharLimit = 200
@@ -125,7 +121,7 @@ func newQuickLogForm(taskID string, defaultDate time.Time) quickLogForm {
 
 	di := textinput.New()
 	di.CharLimit = 16
-	di.SetValue(time.Now().Format("2006-01-02T15:04"))
+	di.SetValue(time.Now().Format(model.DateTimeFormat))
 
 	return quickLogForm{taskID: taskID, desc: desc, tags: tags, duration: dur, dateInput: di}
 }
@@ -273,9 +269,6 @@ func (v TasksView) Update(msg tea.Msg) (TasksView, tea.Cmd) {
 		case detailEditTask:
 			return v.updateTaskForm(msg)
 		}
-		if v.adding {
-			return v.updateAdding(msg)
-		}
 		return v.updateNormal(msg)
 
 	case tea.WindowSizeMsg:
@@ -332,7 +325,7 @@ func (v TasksView) updateNormal(msg tea.KeyMsg) (TasksView, tea.Cmd) {
 		}
 	case "c":
 		if len(tasks) > 0 {
-			tomorrow := v.date.AddDate(0, 0, 1).Format("2006-01-02")
+			tomorrow := v.date.AddDate(0, 0, 1).Format(model.DateFormat)
 			v.carryTaskID = tasks[v.cursor].ID
 			v.carryInput.Reset()
 			v.carryInput.SetValue(tomorrow)
@@ -370,7 +363,7 @@ func (v TasksView) updateNormal(msg tea.KeyMsg) (TasksView, tea.Cmd) {
 		if len(tasks) > 0 {
 			v.pane = 1
 			v.detailMode = detailLogActivity
-			v.logForm = newQuickLogForm(tasks[v.cursor].ID, v.date)
+			v.logForm = newQuickLogForm(tasks[v.cursor].ID)
 			return v, textinput.Blink
 		}
 	}
@@ -465,7 +458,7 @@ func (v TasksView) updateCarry(msg tea.KeyMsg) (TasksView, tea.Cmd) {
 	switch msg.String() {
 	case "enter", "ctrl+s":
 		raw := strings.TrimSpace(v.carryInput.Value())
-		destDate, err := time.Parse("2006-01-02", raw)
+		destDate, err := time.Parse(model.DateFormat, raw)
 		if err != nil {
 			// invalid date — stay in prompt
 			return v, nil
@@ -526,7 +519,7 @@ func (v TasksView) carryTaskTo(id string, destDate time.Time) tea.Cmd {
 		entry := model.ActivityEntry{
 			ID:          storage.NextActivityID(actLog),
 			Timestamp:   now,
-			Description: "Carried to " + destDate.Format("2006-01-02") + ": " + task.Title,
+			Description: "Carried to " + destDate.Format(model.DateFormat) + ": " + task.Title,
 			Tags:        []string{"carried"},
 			TaskRef:     task.ID,
 		}
@@ -536,7 +529,7 @@ func (v TasksView) carryTaskTo(id string, destDate time.Time) tea.Cmd {
 		}
 		_ = v.store.AddActivityRefToTask(id, model.ActivityRef{
 			ID:   entry.ID,
-			Date: srcDate.Format("2006-01-02"),
+			Date: srcDate.Format(model.DateFormat),
 		})
 		return v.loadMsg()
 	}
@@ -554,7 +547,7 @@ func (v TasksView) focusLogField() (TasksView, tea.Cmd) {
 			dur = d
 		}
 		ts := time.Now().Add(-time.Duration(dur) * time.Minute)
-		v.logForm.dateInput.SetValue(ts.Format("2006-01-02T15:04"))
+		v.logForm.dateInput.SetValue(ts.Format(model.DateTimeFormat))
 	}
 	switch v.logForm.focusIdx {
 	case 0:
@@ -589,7 +582,7 @@ func (v TasksView) submitLogForm() tea.Cmd {
 	now := time.Now()
 	ts := now.Add(-time.Duration(dur) * time.Minute)
 	if raw := strings.TrimSpace(v.logForm.dateInput.Value()); raw != "" {
-		if t, err := time.ParseInLocation("2006-01-02T15:04", raw, time.Local); err == nil {
+		if t, err := time.ParseInLocation(model.DateTimeFormat, raw, time.Local); err == nil {
 			ts = t
 		}
 	}
@@ -616,7 +609,7 @@ func (v TasksView) submitLogForm() tea.Cmd {
 		if taskID != "" {
 			_ = v.store.AddActivityRefToTask(taskID, model.ActivityRef{
 				ID:   entry.ID,
-				Date: entryDate.Format("2006-01-02"),
+				Date: entryDate.Format(model.DateFormat),
 			})
 		}
 		return v.loadMsg()
@@ -889,11 +882,6 @@ func (v TasksView) filteredTasks() []model.Task {
 // sortByContext returns tasks grouped in context order: configured contexts
 // first (in order), then no-context tasks, then carried tasks last.
 func sortByContext(tasks []model.Task, contexts []string) []model.Task {
-	rank := make(map[string]int, len(contexts))
-	for i, c := range contexts {
-		rank[c] = i
-	}
-
 	var groups [][]model.Task
 	byCtx := make(map[string][]model.Task)
 	var noCtx, carried []model.Task
@@ -927,7 +915,6 @@ func sortByContext(tasks []model.Task, contexts []string) []model.Task {
 	for _, g := range groups {
 		out = append(out, g...)
 	}
-	_ = rank
 	return out
 }
 
@@ -988,7 +975,7 @@ func (v TasksView) renderList(width int) string {
 	tasks := v.filteredTasks()
 
 	if len(tasks) == 0 && !v.adding {
-		lines = append(lines, lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("  No tasks. Press 'a' to add one."))
+		lines = append(lines, sMuted.Render("  No tasks. Press 'a' to add one."))
 	} else {
 		lines = append(lines, v.renderTasksByContext(tasks, width)...)
 	}
@@ -1000,9 +987,6 @@ func (v TasksView) renderList(width int) string {
 // section headers when the context changes. Tasks arrive pre-sorted from
 // filteredTasks() so cursor index is always consistent with visual position.
 func (v TasksView) renderTasksByContext(tasks []model.Task, width int) []string {
-	muted := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	bold := lipgloss.NewStyle().Bold(true)
-
 	useHeaders := len(v.contexts) > 0 && hasMultipleContexts(tasks)
 	var lines []string
 	prevCtx := "\x00" // sentinel to force first header
@@ -1017,11 +1001,11 @@ func (v TasksView) renderTasksByContext(tasks []model.Task, width int) []string 
 				label = "—"
 			}
 			sep := strings.Repeat("─", max(0, width-len(label)-4))
-			lines = append(lines, "", bold.Render("  "+label)+"  "+muted.Render(sep))
+			lines = append(lines, "", sTitle.Render("  "+label)+"  "+sMuted.Render(sep))
 			prevCtx = t.Context
 		}
 		if useHeaders && t.CarryFrom != "" && prevCtx != "carried" {
-			lines = append(lines, "", muted.Render("  ── carried ──"))
+			lines = append(lines, "", sMuted.Render("  ── carried ──"))
 			prevCtx = "carried"
 		}
 
@@ -1046,44 +1030,45 @@ func hasMultipleContexts(tasks []model.Task) bool {
 
 func (v TasksView) renderDayNav() string {
 	dateStr := v.date.Format("Mon Jan 02")
-	muted := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	bold := lipgloss.NewStyle().Bold(true)
-	return fmt.Sprintf("%s %s %s", muted.Render("←"), bold.Render(dateStr), muted.Render("→"))
+	return fmt.Sprintf("%s %s %s", sMuted.Render("←"), sTitle.Render(dateStr), sMuted.Render("→"))
 }
 
 func renderTaskLine(t model.Task, selected bool, width int) string {
 	check := "[ ]"
-	titleStyle := lipgloss.NewStyle()
+	var titleStyle lipgloss.Style
 
 	switch t.Status {
 	case model.StatusDone:
 		check = "[x]"
-		titleStyle = titleStyle.Foreground(lipgloss.Color("240")).Strikethrough(true)
+		titleStyle = sDone
 	case model.StatusInProgress:
 		check = "[~]"
+		titleStyle = lipgloss.NewStyle()
 	case model.StatusCancelled:
 		check = "[-]"
-		titleStyle = titleStyle.Foreground(lipgloss.Color("240"))
+		titleStyle = sMuted
+	default:
+		titleStyle = lipgloss.NewStyle()
 	}
 
 	priority := ""
 	if t.Priority == model.PriorityHigh {
-		priority = lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(" !")
+		priority = sHigh.Render(" !")
 	}
 
 	carryMark := ""
 	if t.CarryFrom != "" {
-		carryMark = lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Render(" ↑")
+		carryMark = sCarried.Render(" ↑")
 	}
 
 	hasNotes := ""
 	if t.Notes != "" {
-		hasNotes = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(" ¶")
+		hasNotes = sMuted.Render(" ¶")
 	}
 
 	line := fmt.Sprintf("  %s %s%s%s%s", check, titleStyle.Render(t.Title), priority, carryMark, hasNotes)
 	if selected {
-		line = lipgloss.NewStyle().Background(lipgloss.Color("236")).Render(line)
+		line = sSelected.Render(line)
 	}
 	return line
 }
@@ -1091,7 +1076,7 @@ func renderTaskLine(t model.Task, selected bool, width int) string {
 func (v TasksView) renderDetail(width int) string {
 	tasks := v.filteredTasks()
 	if len(tasks) == 0 {
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("No task selected.")
+		return sMuted.Render("No task selected.")
 	}
 	if v.cursor >= len(tasks) {
 		return ""
@@ -1113,11 +1098,8 @@ func (v TasksView) renderDetail(width int) string {
 }
 
 func (v TasksView) renderTaskDetail(t model.Task, width int) string {
-	bold := lipgloss.NewStyle().Bold(true)
-	muted := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-
 	var lines []string
-	lines = append(lines, bold.Render(t.Title))
+	lines = append(lines, sTitle.Render(t.Title))
 	lines = append(lines, strings.Repeat("─", min(len(t.Title)+2, width)))
 	lines = append(lines, "")
 	if t.Context != "" {
@@ -1134,7 +1116,7 @@ func (v TasksView) renderTaskDetail(t model.Task, width int) string {
 	}
 
 	if t.Notes != "" {
-		lines = append(lines, "", bold.Render("Notes:"), t.Notes)
+		lines = append(lines, "", sTitle.Render("Notes:"), t.Notes)
 	}
 
 	linked := v.linkedActivities
@@ -1144,10 +1126,10 @@ func (v TasksView) renderTaskDetail(t model.Task, width int) string {
 			totalMin += e.DurationMin
 		}
 
-		header := bold.Render("Activity:")
+		header := sTitle.Render("Activity:")
 		if totalMin > 0 {
 			total := fmt.Sprintf("%dh %02dm", totalMin/60, totalMin%60)
-			header += "  " + lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Render("∑ "+total)
+			header += "  " + sCarried.Render("∑ "+total)
 		}
 		lines = append(lines, "", header)
 
@@ -1158,55 +1140,51 @@ func (v TasksView) renderTaskDetail(t model.Task, width int) string {
 			}
 			tags := ""
 			if len(e.Tags) > 0 {
-				tags = muted.Render(" [" + strings.Join(e.Tags, ", ") + "]")
+				tags = sMuted.Render(" [" + strings.Join(e.Tags, ", ") + "]")
 			}
 			lines = append(lines, fmt.Sprintf("  %s%s  %s%s",
-				muted.Render(e.Timestamp.Local().Format("Jan 02 15:04")),
-				lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Render(dur),
+				sMuted.Render(e.Timestamp.Local().Format("Jan 02 15:04")),
+				sCarried.Render(dur),
 				e.Description,
 				tags,
 			))
 		}
 	}
 
-	lines = append(lines, "", muted.Render("ID: "+t.ID))
-	lines = append(lines, "", muted.Render("n notes  L log activity  d done  c carry  tab ←list"))
+	lines = append(lines, "", sMuted.Render("ID: "+t.ID))
+	lines = append(lines, "", sMuted.Render("n notes  L log activity  d done  c carry  tab ←list"))
 
 	return strings.Join(lines, "\n")
 }
 
 func (v TasksView) renderTaskFormInline() []string {
-	bold := lipgloss.NewStyle().Bold(true)
-	muted := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	fl := func(idx int, label string) string {
 		if v.tForm.focusIdx == idx {
-			return bold.Render("> " + label)
+			return sTitle.Render("> " + label)
 		}
-		return muted.Render("  " + label)
+		return sMuted.Render("  " + label)
 	}
 	return []string{
-		bold.Render("── New task ──"),
+		sTitle.Render("── New task ──"),
 		fl(0, "Title:    ") + " " + v.tForm.title.View(),
 		fl(1, "Context:  ") + " " + v.tForm.contextDisplay(v.tForm.focusIdx == 1),
 		fl(2, "Labels:   ") + " " + v.tForm.labels.View(),
 		fl(3, "Priority: ") + " " + v.tForm.priority.View(),
-		muted.Render("  tab next  ←/→ context  ctrl+s save  esc cancel"),
+		sMuted.Render("  tab next  ←/→ context  ctrl+s save  esc cancel"),
 		"",
 	}
 }
 
 func (v TasksView) renderTaskFormDetail(t model.Task, width int) string {
-	bold := lipgloss.NewStyle().Bold(true)
-	muted := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	fl := func(idx int, label string) string {
 		if v.tForm.focusIdx == idx {
-			return bold.Render("> " + label)
+			return sTitle.Render("> " + label)
 		}
-		return muted.Render("  " + label)
+		return sMuted.Render("  " + label)
 	}
 	return strings.Join([]string{
-		bold.Render("Edit task"),
-		muted.Render("ID: " + t.ID),
+		sTitle.Render("Edit task"),
+		sMuted.Render("ID: " + t.ID),
 		strings.Repeat("─", min(width, 36)),
 		"",
 		fl(0, "Title:    ") + " " + v.tForm.title.View(),
@@ -1214,72 +1192,62 @@ func (v TasksView) renderTaskFormDetail(t model.Task, width int) string {
 		fl(2, "Labels:   ") + " " + v.tForm.labels.View(),
 		fl(3, "Priority: ") + " " + v.tForm.priority.View(),
 		"",
-		muted.Render("  tab next  ←/→ context  ctrl+s save  esc cancel"),
+		sMuted.Render("  tab next  ←/→ context  ctrl+s save  esc cancel"),
 	}, "\n")
 }
 
 func (v TasksView) renderCarryPrompt(t model.Task, width int) string {
-	bold := lipgloss.NewStyle().Bold(true)
-	muted := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	warn := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
-
 	raw := strings.TrimSpace(v.carryInput.Value())
 	hint := ""
-	if _, err := time.Parse("2006-01-02", raw); err != nil && raw != "" {
-		hint = warn.Render("  invalid date")
+	if _, err := time.Parse(model.DateFormat, raw); err != nil && raw != "" {
+		hint = sCarried.Render("  invalid date")
 	}
 
 	return strings.Join([]string{
-		bold.Render("Carry task to…"),
-		muted.Render("→ " + t.Title),
+		sTitle.Render("Carry task to…"),
+		sMuted.Render("→ " + t.Title),
 		strings.Repeat("─", min(width, 36)),
 		"",
 		"  Date: " + v.carryInput.View() + hint,
 		"",
-		muted.Render("  enter to confirm  esc to cancel"),
+		sMuted.Render("  enter to confirm  esc to cancel"),
 	}, "\n")
 }
 
 func (v TasksView) renderNotesEditor(t model.Task, width int) string {
-	bold := lipgloss.NewStyle().Bold(true)
-	muted := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-
 	v.notesArea.SetWidth(width - 2)
 	v.notesArea.SetHeight(10)
 
 	return strings.Join([]string{
-		bold.Render("Notes: " + t.Title),
+		sTitle.Render("Notes: " + t.Title),
 		strings.Repeat("─", min(len(t.Title)+8, width)),
 		"",
 		v.notesArea.View(),
 		"",
-		muted.Render("ctrl+s save  esc cancel"),
+		sMuted.Render("ctrl+s save  esc cancel"),
 	}, "\n")
 }
 
 func (v TasksView) renderLogForm(t model.Task, width int) string {
-	bold := lipgloss.NewStyle().Bold(true)
-	muted := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-
 	fieldLabel := func(idx int, label string) string {
 		if v.logForm.focusIdx == idx {
-			return bold.Render("> " + label)
+			return sTitle.Render("> " + label)
 		}
-		return muted.Render("  " + label)
+		return sMuted.Render("  " + label)
 	}
 
 	return strings.Join([]string{
-		bold.Render("Log activity"),
-		muted.Render("→ " + t.Title),
+		sTitle.Render("Log activity"),
+		sMuted.Render("→ " + t.Title),
 		strings.Repeat("─", min(width, 36)),
 		"",
 		fieldLabel(0, "Description: ") + " " + v.logForm.desc.View(),
 		fieldLabel(1, "Tags:        ") + " " + v.logForm.tags.View(),
 		fieldLabel(2, "Minutes:     ") + " " + v.logForm.duration.View(),
 		fieldLabel(3, "Date:        ") + " " + v.logForm.dateInput.View(),
-		muted.Render("  Task ref:   " + v.logForm.taskID),
+		sMuted.Render("  Task ref:   " + v.logForm.taskID),
 		"",
-		muted.Render("tab next  ctrl+s save  esc cancel"),
+		sMuted.Render("tab next  ctrl+s save  esc cancel"),
 	}, "\n")
 }
 

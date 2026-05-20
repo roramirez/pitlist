@@ -6,6 +6,11 @@ type TaskStatus string
 type Priority string
 
 const (
+	DateFormat     = "2006-01-02"
+	DateTimeFormat = "2006-01-02T15:04"
+)
+
+const (
 	StatusTodo       TaskStatus = "todo"
 	StatusInProgress TaskStatus = "in_progress"
 	StatusDone       TaskStatus = "done"

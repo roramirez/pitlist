@@ -48,7 +48,7 @@ func newLogAddCmd() *cobra.Command {
 			var day time.Time
 			var err error
 			if date != "" {
-				day, err = time.Parse("2006-01-02", date)
+				day, err = time.Parse(model.DateFormat, date)
 				if err != nil {
 					return fmt.Errorf("invalid date: %w", err)
 				}
@@ -79,7 +79,7 @@ func newLogAddCmd() *cobra.Command {
 			if taskRef != "" {
 				_ = store.AddActivityRefToTask(taskRef, model.ActivityRef{
 					ID:   entry.ID,
-					Date: day.Format("2006-01-02"),
+					Date: day.Format(model.DateFormat),
 				})
 			}
 			fmt.Printf("Logged %s: %s\n", entry.ID, entry.Description)
@@ -106,38 +106,12 @@ func newLogListCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			filter := storage.ActivityFilter{Tags: tags}
 
-			if week {
-				mon := weekStart(today())
-				sun := mon.AddDate(0, 0, 6)
-				filter.From = &mon
-				filter.To = &sun
-			} else if fromStr != "" || toStr != "" {
-				if fromStr != "" {
-					t, err := time.Parse("2006-01-02", fromStr)
-					if err != nil {
-						return err
-					}
-					filter.From = &t
-				}
-				if toStr != "" {
-					t, err := time.Parse("2006-01-02", toStr)
-					if err != nil {
-						return err
-					}
-					filter.To = &t
-				}
-			} else if date != "" {
-				d, err := time.Parse("2006-01-02", date)
-				if err != nil {
-					return err
-				}
-				filter.From = &d
-				filter.To = &d
-			} else {
-				d := today()
-				filter.From = &d
-				filter.To = &d
+			from, to, err := parseDateRange(week, fromStr, toStr, date)
+			if err != nil {
+				return err
 			}
+			filter.From = &from
+			filter.To = &to
 
 			entries, err := store.ListActivity(filter)
 			if err != nil {
@@ -210,7 +184,7 @@ func newLogLinkCmd() *cobra.Command {
 			}
 			_ = store.AddActivityRefToTask(taskID, model.ActivityRef{
 				ID:   activityID,
-				Date: date.Format("2006-01-02"),
+				Date: date.Format(model.DateFormat),
 			})
 			fmt.Printf("Linked %s → %s\n", activityID, taskID)
 			return nil

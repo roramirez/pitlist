@@ -25,7 +25,7 @@ func newCarryCmd() *cobra.Command {
 
 			var destDate time.Time
 			if toStr != "" {
-				destDate, err = time.Parse("2006-01-02", toStr)
+				destDate, err = time.Parse(model.DateFormat, toStr)
 				if err != nil {
 					return fmt.Errorf("invalid --to date: %w", err)
 				}
@@ -37,7 +37,7 @@ func newCarryCmd() *cobra.Command {
 				return err
 			}
 
-			fmt.Printf("Carried %s → %s: %s\n", srcDate.Format("2006-01-02"), destDate.Format("2006-01-02"), task.Title)
+			fmt.Printf("Carried %s → %s: %s\n", srcDate.Format(model.DateFormat), destDate.Format(model.DateFormat), task.Title)
 			return nil
 		},
 	}
@@ -86,7 +86,7 @@ func carryTask(store *storage.YAMLStore, task *model.Task, srcDate, destDate tim
 	entry := model.ActivityEntry{
 		ID:          storage.NextActivityID(actLog),
 		Timestamp:   now,
-		Description: fmt.Sprintf("Carried to %s: %s", destDate.Format("2006-01-02"), task.Title),
+		Description: fmt.Sprintf("Carried to %s: %s", destDate.Format(model.DateFormat), task.Title),
 		Tags:        []string{"carried"},
 		TaskRef:     task.ID,
 	}
@@ -96,7 +96,7 @@ func carryTask(store *storage.YAMLStore, task *model.Task, srcDate, destDate tim
 	}
 	_ = store.AddActivityRefToTask(task.ID, model.ActivityRef{
 		ID:   entry.ID,
-		Date: srcDate.Format("2006-01-02"),
+		Date: srcDate.Format(model.DateFormat),
 	})
 	return nil
 }

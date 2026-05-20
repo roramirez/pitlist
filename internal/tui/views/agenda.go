@@ -161,15 +161,13 @@ func (v AgendaView) View(width, height int) string {
 	v.width = width
 	v.height = height
 
-	bold := lipgloss.NewStyle().Bold(true)
-	muted := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	today := agendaToday()
 
 	var lines []string
-	lines = append(lines, bold.Render("Agenda  — 7 days back · today · 7 days ahead"), "")
+	lines = append(lines, sTitle.Render("Agenda  — 7 days back · today · 7 days ahead"), "")
 
 	if len(v.items) == 0 {
-		lines = append(lines, muted.Render("  Nothing pending. Clear agenda!"))
+		lines = append(lines, sMuted.Render("  Nothing pending. Clear agenda!"))
 	} else {
 		visibleLines := height - 6
 		if visibleLines < 1 {
@@ -198,7 +196,7 @@ func (v AgendaView) View(width, height int) string {
 
 		// Scroll indicator
 		if len(v.items) > visibleLines {
-			lines = append(lines, "", muted.Render(fmt.Sprintf(
+			lines = append(lines, "", sMuted.Render(fmt.Sprintf(
 				"  %d/%d  j/k navigate", v.cursor+1, len(v.items),
 			)))
 		}
@@ -219,14 +217,14 @@ func (v AgendaView) renderDayHeader(d, today time.Time) string {
 	var tag string
 	switch {
 	case d.Equal(today):
-		tag = lipgloss.NewStyle().Foreground(lipgloss.Color("63")).Bold(true).Render("  ← today")
+		tag = sAccent.Bold(true).Render("  ← today")
 	case d.Before(today):
-		tag = lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("  overdue")
+		tag = sHigh.Render("  overdue")
 	case d.Equal(today.AddDate(0, 0, 1)):
-		tag = lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Render("  tomorrow")
+		tag = sCarried.Render("  tomorrow")
 	}
-	header := lipgloss.NewStyle().Bold(true).Render(label) + tag
-	sep := lipgloss.NewStyle().Foreground(lipgloss.Color("238")).Render(strings.Repeat("─", 36))
+	header := sTitle.Render(label) + tag
+	sep := sMuted.Render(strings.Repeat("─", 36))
 	return "\n" + sep + "\n" + "  " + header
 }
 
@@ -238,22 +236,22 @@ func renderAgendaTask(t *model.Task, selected bool) string {
 
 	priority := ""
 	if t.Priority == model.PriorityHigh {
-		priority = lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(" !")
+		priority = sHigh.Render(" !")
 	}
 
 	carry := ""
 	if t.CarryFrom != "" {
-		carry = lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Render(" ↑")
+		carry = sCarried.Render(" ↑")
 	}
 
 	labels := ""
 	if len(t.Labels) > 0 {
-		labels = lipgloss.NewStyle().Foreground(lipgloss.Color("63")).Render(" [" + strings.Join(t.Labels, ", ") + "]")
+		labels = sAccent.Render(" [" + strings.Join(t.Labels, ", ") + "]")
 	}
 
 	line := fmt.Sprintf("    %s %s%s%s%s", check, t.Title, priority, carry, labels)
 	if selected {
-		line = lipgloss.NewStyle().Background(lipgloss.Color("236")).Bold(true).Render(line)
+		line = sSelected.Render(line)
 	}
 	return line
 }

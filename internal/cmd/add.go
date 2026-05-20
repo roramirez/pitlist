@@ -26,7 +26,7 @@ func newAddCmd() *cobra.Command {
 			var day time.Time
 			var err error
 			if date != "" {
-				day, err = time.Parse("2006-01-02", date)
+				day, err = time.Parse(model.DateFormat, date)
 				if err != nil {
 					return fmt.Errorf("invalid date %q: use YYYY-MM-DD", date)
 				}

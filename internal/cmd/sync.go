@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/roramirez/pitlist/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -25,12 +26,7 @@ func newSyncCmd() *cobra.Command {
 			}
 
 			commit := exec.Command("git", "-C", dataDir, "commit", "-m", "pitlist: manual sync")
-			commit.Env = append(os.Environ(),
-				"GIT_AUTHOR_NAME=pitlist",
-				"GIT_AUTHOR_EMAIL=pitlist@local",
-				"GIT_COMMITTER_NAME=pitlist",
-				"GIT_COMMITTER_EMAIL=pitlist@local",
-			)
+			commit.Env = storage.GitEnv()
 			commit.Stdout = os.Stdout
 			commit.Stderr = os.Stderr
 			if err := commit.Run(); err != nil {

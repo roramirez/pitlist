@@ -57,9 +57,9 @@ func newStatsCmd() *cobra.Command {
 				totalMin += a.DurationMin
 			}
 
-			period := from.Format("2006-01-02")
+			period := from.Format(model.DateFormat)
 			if from != to {
-				period = fmt.Sprintf("%s → %s", from.Format("2006-01-02"), to.Format("2006-01-02"))
+				period = fmt.Sprintf("%s → %s", from.Format(model.DateFormat), to.Format(model.DateFormat))
 			}
 
 			fmt.Printf("Period:       %s\n", period)

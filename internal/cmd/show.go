@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/roramirez/pitlist/internal/model"
 	"github.com/spf13/cobra"
 )
 
@@ -22,7 +23,7 @@ func newShowCmd() *cobra.Command {
 			fmt.Printf("Title:    %s\n", task.Title)
 			fmt.Printf("Status:   %s\n", task.Status)
 			fmt.Printf("Priority: %s\n", task.Priority)
-			fmt.Printf("Date:     %s\n", date.Format("2006-01-02"))
+			fmt.Printf("Date:     %s\n", date.Format(model.DateFormat))
 			if len(task.Labels) > 0 {
 				fmt.Printf("Labels:   %s\n", strings.Join(task.Labels, ", "))
 			}

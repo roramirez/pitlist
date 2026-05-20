@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/roramirez/pitlist/internal/model"
 	"github.com/spf13/cobra"
 )
 
@@ -27,7 +28,7 @@ func newEditCmd() *cobra.Command {
 				return fmt.Errorf("no editor set — define $EDITOR or editor in config")
 			}
 
-			dayFile := fmt.Sprintf("%s/days/%s.yaml", cfg.DataDir, date.Format("2006-01-02"))
+			dayFile := fmt.Sprintf("%s/days/%s.yaml", cfg.DataDir, date.Format(model.DateFormat))
 			c := exec.Command(editor, dayFile)
 			c.Stdin = os.Stdin
 			c.Stdout = os.Stdout

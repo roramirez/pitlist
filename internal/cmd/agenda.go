@@ -23,17 +23,17 @@ func newAgendaCmd() *cobra.Command {
 			switch {
 			case from != "" && to != "":
 				var err error
-				start, err = time.Parse("2006-01-02", from)
+				start, err = time.Parse(model.DateFormat, from)
 				if err != nil {
 					return fmt.Errorf("invalid --from: %w", err)
 				}
-				end, err = time.Parse("2006-01-02", to)
+				end, err = time.Parse(model.DateFormat, to)
 				if err != nil {
 					return fmt.Errorf("invalid --to: %w", err)
 				}
 			case from != "":
 				var err error
-				start, err = time.Parse("2006-01-02", from)
+				start, err = time.Parse(model.DateFormat, from)
 				if err != nil {
 					return fmt.Errorf("invalid --from: %w", err)
 				}
