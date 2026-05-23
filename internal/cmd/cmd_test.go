@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"os"
 	"testing"
 	"time"
 
@@ -811,5 +812,40 @@ func TestCarryCmdNotFound(t *testing.T) {
 	cmd.SetArgs([]string{"t-nonexistent-999"})
 	if err := cmd.Execute(); err == nil {
 		t.Error("expected error for non-existent task ID")
+	}
+}
+
+// ── demo-seed ────────────────────────────────────────────────────────────────
+
+func TestDemoSeedCmd(t *testing.T) {
+	dir := t.TempDir()
+	cmd := newDemoSeedCmd()
+	cmd.SetArgs([]string{dir})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("demo-seed: %v", err)
+	}
+
+	// verify YAML files were created in both subdirs
+	for _, sub := range []string{"days", "activity"} {
+		entries, err := os.ReadDir(dir + "/" + sub)
+		if err != nil {
+			t.Fatalf("ReadDir %s: %v", sub, err)
+		}
+		if len(entries) == 0 {
+			t.Errorf("%s/ should contain at least one YAML file", sub)
+		}
+	}
+}
+
+// ── root --demo flag ─────────────────────────────────────────────────────────
+
+func TestRootDemoFlagExists(t *testing.T) {
+	root := NewRootCmd()
+	f := root.Flags().Lookup("demo")
+	if f == nil {
+		t.Fatal("--demo flag not registered on root command")
+	}
+	if f.DefValue != "false" {
+		t.Errorf("--demo default = %q, want false", f.DefValue)
 	}
 }
