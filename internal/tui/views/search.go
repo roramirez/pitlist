@@ -79,9 +79,7 @@ func (v SearchView) updateInput(msg tea.KeyMsg) (SearchView, tea.Cmd) {
 			return v, v.search()
 		}
 	case str == "esc":
-		if len(v.results) > 0 {
-			v.inputFocused = false
-		}
+		v.inputFocused = false
 	case str == "down":
 		if len(v.results) > 0 {
 			v.inputFocused = false
@@ -265,7 +263,7 @@ func (v SearchView) View(width, height int) string {
 
 	lines = append(lines, "")
 	if v.inputFocused {
-		lines = append(lines, sMuted.Render("  ↓/enter → navigate results  1/2/3/4 tabs"))
+		lines = append(lines, sMuted.Render("  ↓/enter → navigate results  esc → stop typing  q quit  1/2/3/4 tabs"))
 	} else {
 		lines = append(lines, sMuted.Render("  j/k navigate  enter → jump  esc/i → edit query  q quit"))
 	}

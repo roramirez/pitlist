@@ -162,6 +162,13 @@ xdotool type --window "$WID" --delay 60 "trip"
 PAUSE 1.5
 K Down; PAUSE 0.4
 
+# ── Scene 16b: esc exits search input, switch tab ────────────────────────────
+K 4;    PAUSE 0.6
+xdotool type --window "$WID" --delay 60 "zzz"
+PAUSE 1.0
+K Escape; PAUSE 0.6
+K 1;    PAUSE 0.8
+
 # ── Scene 17: back to Tasks, filter ──────────────────────────────────────────
 K 1;    PAUSE 0.6
 K slash; PAUSE 0.6

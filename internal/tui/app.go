@@ -170,8 +170,8 @@ func (a App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Always allow quit via ctrl+c even inside forms
-	if inputActive && msg.String() == "ctrl+c" {
+	// Always allow quit even inside forms
+	if inputActive && (msg.String() == "ctrl+c" || msg.String() == "q") {
 		return a, tea.Quit
 	}
 
@@ -277,7 +277,7 @@ func (a App) renderStatusBar() string {
 		hints = "j/k navigate  d done  enter → Tasks  r refresh  1/2/3/4 tabs  q quit"
 	case tabSearch:
 		if a.searchView.IsInputActive() {
-			hints = "type to search  ↓/enter → navigate results  1/2/3/4 tabs"
+			hints = "type to search  ↓/enter → navigate results  esc → stop typing  q quit  1/2/3/4 tabs"
 		} else {
 			hints = "j/k navigate  enter → jump  i → edit search  q quit  1/2/3/4 tabs"
 		}
