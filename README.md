@@ -141,7 +141,24 @@ Type to search. Results update in real time.
 - `#auth` — strict tag/label search only
 - `token refresh` — multi-word text search
 
-`↓` or `enter` switches to navigate mode. `i`, `esc`, or `/` returns to input.
+**Input mode** (default when entering Search):
+
+| Key | Action |
+|---|---|
+| `↓` / `enter` | Switch to navigate mode |
+| `esc` | Stop typing, switch to navigate mode |
+| `q` | Quit |
+| `1`–`4` | Switch tab |
+
+**Navigate mode:**
+
+| Key | Action |
+|---|---|
+| `j` / `k` | Move cursor |
+| `enter` | Jump to result's day |
+| `i` / `esc` / `/` | Back to input |
+| `q` | Quit |
+| `1`–`4` | Switch tab |
 
 ---
 

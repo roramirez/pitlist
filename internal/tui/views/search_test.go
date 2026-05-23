@@ -53,12 +53,12 @@ func TestSearchViewBackspaceEmpty(t *testing.T) {
 func TestSearchViewEscWithNoResults(t *testing.T) {
 	v := NewSearchView(nil)
 	v.query = "something"
-	// esc with no results: stay in input mode
+	// esc should always exit input mode so the user can navigate away
 	msg := tea.KeyMsg{Type: tea.KeyEsc}
 	v2, _ := v.Update(msg)
 	v = v2
-	if !v.inputFocused {
-		t.Error("expected inputFocused to remain true when no results")
+	if v.inputFocused {
+		t.Error("expected inputFocused=false after esc even with no results")
 	}
 }
 
