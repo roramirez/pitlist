@@ -4,14 +4,16 @@ import (
 	"fmt"
 
 	"github.com/roramirez/pitlist/internal/config"
+	"github.com/roramirez/pitlist/internal/demo"
 	"github.com/roramirez/pitlist/internal/storage"
 	"github.com/roramirez/pitlist/internal/tui"
 	"github.com/spf13/cobra"
 )
 
 var (
-	cfg   *config.Config
-	store *storage.YAMLStore
+	cfg      *config.Config
+	store    *storage.YAMLStore
+	demoMode bool
 )
 
 func NewRootCmd() *cobra.Command {
@@ -19,6 +21,9 @@ func NewRootCmd() *cobra.Command {
 		Use:   "pitlist",
 		Short: "A CLI/TUI todo list and activity logger",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if demoMode {
+				return nil
+			}
 			var err error
 			cfg, err = config.Load()
 			if err != nil {
@@ -31,9 +36,23 @@ func NewRootCmd() *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if demoMode {
+				dir, cleanup, err := demo.Seed()
+				if err != nil {
+					return fmt.Errorf("seed demo: %w", err)
+				}
+				defer cleanup()
+				demoStore, err := storage.NewYAMLStore(dir)
+				if err != nil {
+					return fmt.Errorf("open demo store: %w", err)
+				}
+				return tui.Run(demoStore)
+			}
 			return tui.Run(store, cfg.Contexts...)
 		},
 	}
+
+	root.Flags().BoolVar(&demoMode, "demo", false, "run with pre-seeded demo data")
 
 	root.AddCommand(
 		newAddCmd(),
@@ -47,6 +66,7 @@ func NewRootCmd() *cobra.Command {
 		newLogCmd(),
 		newSyncCmd(),
 		newStatsCmd(),
+		newDemoSeedCmd(),
 	)
 
 	return root

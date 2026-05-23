@@ -14,6 +14,10 @@ pitlist                  # open TUI
 
 ---
 
+![pitlist demo](assets/demo.gif)
+
+---
+
 ## Install
 
 ```bash
