@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <pattern id="scanlines" x="0" y="0" width="2" height="4" patternUnits="userSpaceOnUse">
+      <rect x="0" y="0" width="2" height="2" fill="#cdd6f4"/>
+    </pattern>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" rx="80" ry="80" fill="#1e1e2e"/>
+  <rect width="512" height="512" rx="80" ry="80" fill="url(#scanlines)" opacity="0.04"/>
+  <rect x="2" y="2" width="508" height="508" rx="79" ry="79" fill="none" stroke="#313244" stroke-width="4"/>
+
+  <!-- "Todo" -->
+  <text
+    x="256"
+    y="105"
+    text-anchor="middle"
+    dominant-baseline="middle"
+    font-family="monospace, 'Courier New', Courier"
+    font-size="125"
+    font-weight="bold"
+    fill="#cdd6f4"
+  >Todo</text>
+
+  <!-- "List" -->
+  <text
+    x="256"
+    y="215"
+    text-anchor="middle"
+    dominant-baseline="middle"
+    font-family="monospace, 'Courier New', Courier"
+    font-size="125"
+    font-weight="bold"
+    fill="#cdd6f4"
+  >List</text>
+
+  <!-- Checklist item 1: checked (green) -->
+  <rect x="72" y="288" width="28" height="28" rx="4" fill="#a6e3a1"/>
+  <polyline
+    points="79,302 85,309 95,296"
+    fill="none"
+    stroke="#1e1e2e"
+    stroke-width="3.5"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <rect x="112" y="296" width="155" height="12" rx="4" fill="#a6e3a1" opacity="0.45"/>
+
+  <!-- Checklist item 2: unchecked (muted) -->
+  <rect x="72" y="325" width="28" height="28" rx="4" fill="none" stroke="#585b70" stroke-width="3"/>
+  <rect x="112" y="333" width="205" height="12" rx="4" fill="#585b70" opacity="0.40"/>
+
+  <!-- Checklist item 3: checked (green, shorter line) -->
+  <rect x="72" y="362" width="28" height="28" rx="4" fill="#a6e3a1"/>
+  <polyline
+    points="79,376 85,383 95,370"
+    fill="none"
+    stroke="#1e1e2e"
+    stroke-width="3.5"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <rect x="112" y="370" width="120" height="12" rx="4" fill="#a6e3a1" opacity="0.45"/>
+
+  <!-- Activity clock (blue accent, bottom-right) -->
+  <circle cx="392" cy="325" r="42" fill="none" stroke="#89b4fa" stroke-width="12"/>
+  <line x1="392" y1="303" x2="392" y2="325" stroke="#89b4fa" stroke-width="10" stroke-linecap="round"/>
+  <line x1="392" y1="325" x2="409" y2="325" stroke="#89b4fa" stroke-width="10" stroke-linecap="round"/>
+
+  <!-- "pitlist" name + house at bottom -->
+  <text
+    x="133"
+    y="458"
+    text-anchor="start"
+    dominant-baseline="middle"
+    font-family="monospace, 'Courier New', Courier"
+    font-size="46"
+    font-weight="bold"
+    fill="#585b70"
+  >pitlist</text>
+
+  <!-- House icon (mauve accent) -->
+  <!-- Roof -->
+  <polygon points="333,451 358,428 383,451" fill="#cba6f7"/>
+  <!-- Body -->
+  <rect x="337" y="450" width="42" height="28" rx="2" fill="#cba6f7"/>
+  <!-- Door -->
+  <rect x="350" y="462" width="14" height="16" rx="2" fill="#1e1e2e"/>
+</svg>

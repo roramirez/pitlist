@@ -1,5 +1,9 @@
 # pitlist
 
+<p align="center">
+  <img src="assets/icon.svg" width="128" alt="pitlist logo"/>
+</p>
+
 A personal CLI/TUI for daily task planning and activity tracking. Plain YAML files, git-versioned, no database.
 
 ```
