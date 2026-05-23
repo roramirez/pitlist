@@ -11,6 +11,8 @@ Plan.md
 *.test
 *.prof
 
-# Data
+# Data (YAML data files, but not GitHub Actions workflows)
 *.yaml
 *.yml
+!.github/**/*.yaml
+!.github/**/*.yml
