@@ -388,6 +388,43 @@ func TestAppUpdateFilterModeBlinkPassthrough(t *testing.T) {
 	_ = m.(App) // must not panic
 }
 
+// ── 'q' must not quit while an input is active ────────────────────────────────
+
+func TestAppQuitKeyIgnoredWhenInputActive(t *testing.T) {
+	store, _ := storage.NewYAMLStore(t.TempDir())
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	plan := &model.DayPlan{
+		Date: date,
+		Tasks: []model.Task{
+			{ID: "t-001", Title: "test task", Status: model.StatusTodo, CreatedAt: date, UpdatedAt: date},
+		},
+	}
+	store.SaveDayPlan(plan)
+
+	app := NewApp(store)
+	app.tasksView = views.NewTasksView(store, date)
+	m, _ := app.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	app = m.(App)
+	tasksMsg := views.TasksMsg{Plan: plan, ActLog: &model.ActivityLog{Date: date}}
+	m, _ = app.Update(tasksMsg)
+	app = m.(App)
+
+	// Open notes editor with 'n'
+	m, _ = app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	app = m.(App)
+	if !app.tasksView.IsInputActive() {
+		t.Skip("no task selected; cannot open notes editor")
+	}
+
+	// 'q' must NOT produce a quit cmd when input is active
+	_, cmd := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	if cmd != nil {
+		if _, ok := cmd().(tea.QuitMsg); ok {
+			t.Error("'q' quit the app while input was active")
+		}
+	}
+}
+
 // ── Update delegates non-key to active tab ────────────────────────────────────
 
 func TestAppUpdateDelegatesWindowSizeToActiveViews(t *testing.T) {

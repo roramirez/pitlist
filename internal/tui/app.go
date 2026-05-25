@@ -170,8 +170,8 @@ func (a App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Always allow quit even inside forms
-	if inputActive && (msg.String() == "ctrl+c" || msg.String() == "q") {
+	// Allow ctrl+c to quit even inside forms, but not q (it should type normally)
+	if inputActive && msg.String() == "ctrl+c" {
 		return a, tea.Quit
 	}
 
