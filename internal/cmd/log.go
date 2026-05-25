@@ -48,9 +48,9 @@ func newLogAddCmd() *cobra.Command {
 			var day time.Time
 			var err error
 			if date != "" {
-				day, err = time.Parse(model.DateFormat, date)
+				day, err = parseDate(date)
 				if err != nil {
-					return fmt.Errorf("invalid date: %w", err)
+					return fmt.Errorf("invalid date %q: use %s", date, dateKeywordsHint)
 				}
 			} else {
 				day = today()
@@ -90,7 +90,7 @@ func newLogAddCmd() *cobra.Command {
 	cmd.Flags().StringArrayVarP(&tags, "tag", "t", nil, "tag (repeatable)")
 	cmd.Flags().StringVar(&taskRef, "ref", "", "link to task ID")
 	cmd.Flags().IntVarP(&duration, "duration", "d", 0, "duration in minutes")
-	cmd.Flags().StringVar(&date, "date", "", "log for date (YYYY-MM-DD, default today)")
+	cmd.Flags().StringVar(&date, "date", "", "log for date:"+dateFlag)
 	return cmd
 }
 
@@ -134,7 +134,7 @@ func newLogListCmd() *cobra.Command {
 	cmd.Flags().StringVar(&fromStr, "from", "", "from date")
 	cmd.Flags().StringVar(&toStr, "to", "", "to date")
 	cmd.Flags().BoolVarP(&week, "week", "w", false, "this week")
-	cmd.Flags().StringVar(&date, "date", "", "specific date (default today)")
+	cmd.Flags().StringVar(&date, "date", "", "specific date:"+dateFlag)
 	return cmd
 }
 

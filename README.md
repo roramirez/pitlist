@@ -164,10 +164,25 @@ Type to search. Results update in real time.
 
 ## CLI
 
+### Date keywords
+
+Wherever a date is accepted (`--date`, `--from`, `--to`) you can use `YYYY-MM-DD` or a keyword:
+
+| Keyword | Resolves to |
+|---------|-------------|
+| `today` / `tomorrow` / `yesterday` | ±0 / +1 / −1 days |
+| `next_week` / `last_week` | Monday of next / previous week |
+| `in_a_week` | today + 7 days |
+| `next_month` / `last_month` | 1st of next / previous month |
+| `in_a_month` | today + 30 days |
+| `monday` … `sunday` | upcoming weekday (including today if it matches) |
+| `next_monday` … `next_sunday` | strictly next occurrence (never today) |
+
 ### Tasks
 
 ```bash
 pitlist add "Title" --context work --label auth --priority high --due 2026-05-20
+pitlist add "Title" --date friday     # plan for this Friday
 pitlist done t-20260519-001
 pitlist list                          # today, open tasks
 pitlist list --label auth             # by label, all days
@@ -176,7 +191,7 @@ pitlist list --status done
 pitlist show t-20260519-001
 pitlist edit t-20260519-001           # opens $EDITOR
 pitlist carry t-20260519-001          # to tomorrow
-pitlist carry t-20260519-001 --to 2026-05-22
+pitlist carry t-20260519-001 --to next_monday
 pitlist delete t-20260519-001
 ```
 
@@ -186,14 +201,14 @@ pitlist delete t-20260519-001
 pitlist agenda                        # next 7 days, pending only
 pitlist agenda -n 14
 pitlist agenda --label auth
-pitlist agenda --from 2026-05-01 --to 2026-05-31
+pitlist agenda --from today --to next_week
 ```
 
 ### Activity log
 
 ```bash
 pitlist log "What I did" --tag debugging --ref t-20260519-001 --duration 45
-pitlist log "Yesterday's work" --date 2026-05-18 --tag auth
+pitlist log "Yesterday's work" --date yesterday --tag auth
 pitlist log list                      # today
 pitlist log list --tag debugging --week
 pitlist log link a-20260519-001 t-20260519-001

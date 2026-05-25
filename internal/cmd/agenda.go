@@ -23,19 +23,19 @@ func newAgendaCmd() *cobra.Command {
 			switch {
 			case from != "" && to != "":
 				var err error
-				start, err = time.Parse(model.DateFormat, from)
+				start, err = parseDate(from)
 				if err != nil {
-					return fmt.Errorf("invalid --from: %w", err)
+					return fmt.Errorf("invalid --from %q: use %s", from, dateKeywordsHint)
 				}
-				end, err = time.Parse(model.DateFormat, to)
+				end, err = parseDate(to)
 				if err != nil {
-					return fmt.Errorf("invalid --to: %w", err)
+					return fmt.Errorf("invalid --to %q: use %s", to, dateKeywordsHint)
 				}
 			case from != "":
 				var err error
-				start, err = time.Parse(model.DateFormat, from)
+				start, err = parseDate(from)
 				if err != nil {
-					return fmt.Errorf("invalid --from: %w", err)
+					return fmt.Errorf("invalid --from %q: use %s", from, dateKeywordsHint)
 				}
 				end = start.AddDate(0, 0, days-1)
 			default:
@@ -82,8 +82,8 @@ func newAgendaCmd() *cobra.Command {
 
 	cmd.Flags().IntVarP(&days, "days", "n", 7, "number of days to show (default 7)")
 	cmd.Flags().StringArrayVarP(&labels, "label", "l", nil, "filter by label")
-	cmd.Flags().StringVar(&from, "from", "", "start date (YYYY-MM-DD, default today)")
-	cmd.Flags().StringVar(&to, "to", "", "end date (YYYY-MM-DD)")
+	cmd.Flags().StringVar(&from, "from", "", "start date:"+dateFlag)
+	cmd.Flags().StringVar(&to, "to", "", "end date:"+dateFlag)
 	return cmd
 }
 
