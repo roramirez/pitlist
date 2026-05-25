@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Notes editor** — pressing `q` while typing a note no longer closes the app; only `ctrl+c` quits during active input
+
 ### Added
 
 - **Named profiles / scopes** — define multiple profiles in `config.yaml` and activate one with `--scope <name>` or `PITLIST_SCOPE=<name>`; each scope has its own `data_dir`, `contexts`, and git history
