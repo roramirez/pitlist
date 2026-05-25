@@ -1370,3 +1370,54 @@ func TestRenderTaskLineStates(t *testing.T) {
 		}
 	}
 }
+
+func TestMoveCursor_Normal(t *testing.T) {
+	s, _ := storage.NewYAMLStore(t.TempDir())
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	v := NewTasksView(s, date)
+	tasks := []model.Task{
+		{ID: "t-001", Title: "A", Status: model.StatusTodo, CreatedAt: date, UpdatedAt: date},
+		{ID: "t-002", Title: "B", Status: model.StatusTodo, CreatedAt: date, UpdatedAt: date},
+		{ID: "t-003", Title: "C", Status: model.StatusTodo, CreatedAt: date, UpdatedAt: date},
+	}
+	v2, _ := v.moveCursor(tasks, +1)
+	if v2.cursor != 1 {
+		t.Errorf("moveCursor +1: cursor=%d, want 1", v2.cursor)
+	}
+	v3, _ := v2.moveCursor(tasks, -1)
+	if v3.cursor != 0 {
+		t.Errorf("moveCursor -1: cursor=%d, want 0", v3.cursor)
+	}
+}
+
+func TestMoveCursor_ForwardAtEnd(t *testing.T) {
+	s, _ := storage.NewYAMLStore(t.TempDir())
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	v := NewTasksView(s, date)
+	tasks := []model.Task{
+		{ID: "t-001", Title: "A", Status: model.StatusTodo, CreatedAt: date, UpdatedAt: date},
+	}
+	v2, cmd := v.moveCursor(tasks, +1)
+	if v2.cursor != 0 {
+		t.Errorf("moveCursor +1 at end: cursor=%d, want 0", v2.cursor)
+	}
+	if cmd != nil {
+		t.Error("expected nil cmd when clamped at end")
+	}
+}
+
+func TestMoveCursor_BackwardAtStart(t *testing.T) {
+	s, _ := storage.NewYAMLStore(t.TempDir())
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	v := NewTasksView(s, date)
+	tasks := []model.Task{
+		{ID: "t-001", Title: "A", Status: model.StatusTodo, CreatedAt: date, UpdatedAt: date},
+	}
+	v2, cmd := v.moveCursor(tasks, -1)
+	if v2.cursor != 0 {
+		t.Errorf("moveCursor -1 at start: cursor=%d, want 0", v2.cursor)
+	}
+	if cmd != nil {
+		t.Error("expected nil cmd when clamped at start")
+	}
+}

@@ -282,19 +282,9 @@ func (v TasksView) updateNormal(msg tea.KeyMsg) (TasksView, tea.Cmd) {
 	tasks := v.filteredTasks()
 	switch msg.String() {
 	case "j", "down":
-		if v.cursor < len(tasks)-1 {
-			v.cursor++
-			if len(tasks) > 0 {
-				return v, v.loadLinkedActivities(tasks[v.cursor].ID)
-			}
-		}
+		return v.moveCursor(tasks, +1)
 	case "k", "up":
-		if v.cursor > 0 {
-			v.cursor--
-			if len(tasks) > 0 {
-				return v, v.loadLinkedActivities(tasks[v.cursor].ID)
-			}
-		}
+		return v.moveCursor(tasks, -1)
 	case "h", "left", "[":
 		if v.pane == 0 {
 			v.date = v.date.AddDate(0, 0, -1)
@@ -368,6 +358,15 @@ func (v TasksView) updateNormal(msg tea.KeyMsg) (TasksView, tea.Cmd) {
 		}
 	}
 	return v, nil
+}
+
+func (v TasksView) moveCursor(tasks []model.Task, delta int) (TasksView, tea.Cmd) {
+	next := v.cursor + delta
+	if next < 0 || next >= len(tasks) {
+		return v, nil
+	}
+	v.cursor = next
+	return v, v.loadLinkedActivities(tasks[next].ID)
 }
 
 // updateNotes handles textarea input for editing task notes.
