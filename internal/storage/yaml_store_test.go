@@ -652,3 +652,69 @@ func TestGetActivitiesByRefsSortsByTimestamp(t *testing.T) {
 		t.Error("results should be sorted by timestamp ascending")
 	}
 }
+
+func TestContainsAll(t *testing.T) {
+	cases := []struct {
+		haystack []string
+		needles  []string
+		want     bool
+	}{
+		{[]string{"a", "b", "c"}, []string{"a", "c"}, true},
+		{[]string{"a", "b"}, []string{"a", "c"}, false},
+		{[]string{"a"}, []string{}, true},
+		{[]string{}, []string{"a"}, false},
+		{[]string{"x"}, []string{"x"}, true},
+	}
+	for _, tc := range cases {
+		got := containsAll(tc.haystack, tc.needles)
+		if got != tc.want {
+			t.Errorf("containsAll(%v, %v) = %v, want %v", tc.haystack, tc.needles, got, tc.want)
+		}
+	}
+}
+
+func TestWalkDaysDateFilter(t *testing.T) {
+	s := newTestStore(t)
+	d1 := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	d2 := time.Date(2026, 5, 15, 0, 0, 0, 0, time.UTC)
+	d3 := time.Date(2026, 5, 31, 0, 0, 0, 0, time.UTC)
+	for _, d := range []time.Time{d1, d2, d3} {
+		s.SaveDayPlan(&model.DayPlan{Date: d, Tasks: []model.Task{}})
+	}
+
+	var visited []time.Time
+	from, to := d1.AddDate(0, 0, 1), d3.AddDate(0, 0, -1)
+	if err := s.walkDays(&from, &to, func(d time.Time) error {
+		visited = append(visited, d)
+		return nil
+	}); err != nil {
+		t.Fatalf("walkDays: %v", err)
+	}
+
+	if len(visited) != 1 || !visited[0].Equal(d2) {
+		t.Errorf("expected [%v], got %v", d2, visited)
+	}
+}
+
+func TestWalkActivityFilesDateFilter(t *testing.T) {
+	s := newTestStore(t)
+	d1 := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	d2 := time.Date(2026, 5, 15, 0, 0, 0, 0, time.UTC)
+	d3 := time.Date(2026, 5, 31, 0, 0, 0, 0, time.UTC)
+	for _, d := range []time.Time{d1, d2, d3} {
+		s.SaveActivityLog(&model.ActivityLog{Date: d, Entries: []model.ActivityEntry{}})
+	}
+
+	var visited []time.Time
+	from, to := d1.AddDate(0, 0, 1), d3.AddDate(0, 0, -1)
+	if err := s.walkActivityFiles(&from, &to, func(d time.Time) error {
+		visited = append(visited, d)
+		return nil
+	}); err != nil {
+		t.Fatalf("walkActivityFiles: %v", err)
+	}
+
+	if len(visited) != 1 || !visited[0].Equal(d2) {
+		t.Errorf("expected [%v], got %v", d2, visited)
+	}
+}

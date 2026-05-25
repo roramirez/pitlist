@@ -18,65 +18,11 @@ func newAgendaCmd() *cobra.Command {
 		Use:   "agenda",
 		Short: "Show pending tasks grouped by day",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var start, end time.Time
-
-			switch {
-			case from != "" && to != "":
-				var err error
-				start, err = parseDate(from)
-				if err != nil {
-					return fmt.Errorf("invalid --from %q: use %s", from, dateKeywordsHint)
-				}
-				end, err = parseDate(to)
-				if err != nil {
-					return fmt.Errorf("invalid --to %q: use %s", to, dateKeywordsHint)
-				}
-			case from != "":
-				var err error
-				start, err = parseDate(from)
-				if err != nil {
-					return fmt.Errorf("invalid --from %q: use %s", from, dateKeywordsHint)
-				}
-				end = start.AddDate(0, 0, days-1)
-			default:
-				start = today()
-				end = start.AddDate(0, 0, days-1)
+			start, end, err := resolveAgendaRange(from, to, days)
+			if err != nil {
+				return err
 			}
-
-			anyFound := false
-			for d := start; !d.After(end); d = d.AddDate(0, 0, 1) {
-				plan, err := store.GetDayPlan(d)
-				if err != nil {
-					continue
-				}
-
-				var pending []model.Task
-				for _, t := range plan.Tasks {
-					if t.Status == model.StatusDone || t.Status == model.StatusCancelled {
-						continue
-					}
-					if !matchLabels(t.Labels, labels) {
-						continue
-					}
-					pending = append(pending, t)
-				}
-
-				if len(pending) == 0 {
-					continue
-				}
-
-				anyFound = true
-				printDayHeader(d)
-				for i := range pending {
-					printTask(&pending[i])
-				}
-				fmt.Println()
-			}
-
-			if !anyFound {
-				fmt.Println("Nothing pending.")
-			}
-			return nil
+			return printAgenda(start, end, labels)
 		},
 	}
 
@@ -85,6 +31,67 @@ func newAgendaCmd() *cobra.Command {
 	cmd.Flags().StringVar(&from, "from", "", "start date:"+dateFlag)
 	cmd.Flags().StringVar(&to, "to", "", "end date:"+dateFlag)
 	return cmd
+}
+
+func resolveAgendaRange(from, to string, days int) (start, end time.Time, err error) {
+	switch {
+	case from != "" && to != "":
+		start, err = parseDate(from)
+		if err != nil {
+			return time.Time{}, time.Time{}, fmt.Errorf("invalid --from %q: use %s", from, dateKeywordsHint)
+		}
+		end, err = parseDate(to)
+		if err != nil {
+			return time.Time{}, time.Time{}, fmt.Errorf("invalid --to %q: use %s", to, dateKeywordsHint)
+		}
+	case from != "":
+		start, err = parseDate(from)
+		if err != nil {
+			return time.Time{}, time.Time{}, fmt.Errorf("invalid --from %q: use %s", from, dateKeywordsHint)
+		}
+		end = start.AddDate(0, 0, days-1)
+	default:
+		start = today()
+		end = start.AddDate(0, 0, days-1)
+	}
+	return start, end, nil
+}
+
+func printAgenda(start, end time.Time, labels []string) error {
+	anyFound := false
+	for d := start; !d.After(end); d = d.AddDate(0, 0, 1) {
+		plan, err := store.GetDayPlan(d)
+		if err != nil {
+			continue
+		}
+
+		var pending []model.Task
+		for _, t := range plan.Tasks {
+			if t.Status == model.StatusDone || t.Status == model.StatusCancelled {
+				continue
+			}
+			if !matchLabels(t.Labels, labels) {
+				continue
+			}
+			pending = append(pending, t)
+		}
+
+		if len(pending) == 0 {
+			continue
+		}
+
+		anyFound = true
+		printDayHeader(d)
+		for i := range pending {
+			printTask(&pending[i])
+		}
+		fmt.Println()
+	}
+
+	if !anyFound {
+		fmt.Println("Nothing pending.")
+	}
+	return nil
 }
 
 func printDayHeader(d time.Time) {

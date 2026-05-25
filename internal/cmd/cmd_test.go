@@ -770,6 +770,54 @@ func TestAgendaCmdInvalidTo(t *testing.T) {
 	}
 }
 
+func TestResolveAgendaRange_FromTo(t *testing.T) {
+	start, end, err := resolveAgendaRange("2026-05-01", "2026-05-31", 7)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	wantStart := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	wantEnd := time.Date(2026, 5, 31, 0, 0, 0, 0, time.UTC)
+	if !start.Equal(wantStart) || !end.Equal(wantEnd) {
+		t.Errorf("got %v–%v, want %v–%v", start, end, wantStart, wantEnd)
+	}
+}
+
+func TestResolveAgendaRange_FromOnly(t *testing.T) {
+	start, end, err := resolveAgendaRange("2026-05-01", "", 3)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	wantStart := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	wantEnd := time.Date(2026, 5, 3, 0, 0, 0, 0, time.UTC)
+	if !start.Equal(wantStart) || !end.Equal(wantEnd) {
+		t.Errorf("got %v–%v, want %v–%v", start, end, wantStart, wantEnd)
+	}
+}
+
+func TestResolveAgendaRange_Default(t *testing.T) {
+	start, end, err := resolveAgendaRange("", "", 7)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	wantStart := today()
+	wantEnd := today().AddDate(0, 0, 6)
+	if !start.Equal(wantStart) || !end.Equal(wantEnd) {
+		t.Errorf("got %v–%v, want %v–%v", start, end, wantStart, wantEnd)
+	}
+}
+
+func TestResolveAgendaRange_InvalidFrom(t *testing.T) {
+	if _, _, err := resolveAgendaRange("bad", "", 7); err == nil {
+		t.Error("expected error for invalid --from")
+	}
+}
+
+func TestResolveAgendaRange_InvalidTo(t *testing.T) {
+	if _, _, err := resolveAgendaRange("2026-05-01", "bad", 7); err == nil {
+		t.Error("expected error for invalid --to")
+	}
+}
+
 // ── stats ─────────────────────────────────────────────────────────────────────
 
 func TestStatsCmd(t *testing.T) {

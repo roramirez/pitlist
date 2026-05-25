@@ -60,52 +60,86 @@ func (s *YAMLStore) SaveDayPlan(plan *model.DayPlan) error {
 	return nil
 }
 
-func (s *YAMLStore) GetTaskByID(id string) (*model.Task, time.Time, error) {
+// walkDays calls fn for each valid day file within the optional date range.
+func (s *YAMLStore) walkDays(from, to *time.Time, fn func(time.Time) error) error {
 	entries, err := os.ReadDir(filepath.Join(s.dataDir, "days"))
 	if err != nil {
-		return nil, time.Time{}, err
+		return err
 	}
 	for _, e := range entries {
 		date, ok := parseDateFromFilename(e.Name())
 		if !ok {
 			continue
 		}
+		if from != nil && date.Before(*from) {
+			continue
+		}
+		if to != nil && date.After(*to) {
+			continue
+		}
+		if err := fn(date); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// walkActivityFiles calls fn for each valid activity file within the optional date range.
+func (s *YAMLStore) walkActivityFiles(from, to *time.Time, fn func(time.Time) error) error {
+	entries, err := os.ReadDir(filepath.Join(s.dataDir, "activity"))
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		date, ok := parseDateFromFilename(e.Name())
+		if !ok {
+			continue
+		}
+		if from != nil && date.Before(*from) {
+			continue
+		}
+		if to != nil && date.After(*to) {
+			continue
+		}
+		if err := fn(date); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *YAMLStore) GetTaskByID(id string) (*model.Task, time.Time, error) {
+	var found *model.Task
+	var foundDate time.Time
+	err := s.walkDays(nil, nil, func(date time.Time) error {
 		plan, err := s.GetDayPlan(date)
 		if err != nil {
-			continue
+			return nil
 		}
 		for i := range plan.Tasks {
 			if plan.Tasks[i].ID == id {
 				t := plan.Tasks[i]
-				return &t, date, nil
+				found = &t
+				foundDate = date
 			}
 		}
+		return nil
+	})
+	if err != nil {
+		return nil, time.Time{}, err
 	}
-	return nil, time.Time{}, fmt.Errorf("task %q not found", id)
+	if found == nil {
+		return nil, time.Time{}, fmt.Errorf("task %q not found", id)
+	}
+	return found, foundDate, nil
 }
 
 func (s *YAMLStore) ListTasks(filter TaskFilter) ([]*model.Task, error) {
-	entries, err := os.ReadDir(filepath.Join(s.dataDir, "days"))
-	if err != nil {
-		return nil, err
-	}
-
 	var results []*model.Task
-	for _, e := range entries {
-		date, ok := parseDateFromFilename(e.Name())
-		if !ok {
-			continue
-		}
-		if filter.From != nil && date.Before(*filter.From) {
-			continue
-		}
-		if filter.To != nil && date.After(*filter.To) {
-			continue
-		}
-
+	err := s.walkDays(filter.From, filter.To, func(date time.Time) error {
 		plan, err := s.GetDayPlan(date)
 		if err != nil {
-			continue
+			return nil
 		}
 		for i := range plan.Tasks {
 			t := &plan.Tasks[i]
@@ -114,12 +148,32 @@ func (s *YAMLStore) ListTasks(filter TaskFilter) ([]*model.Task, error) {
 				results = append(results, &tc)
 			}
 		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-
 	sort.Slice(results, func(i, j int) bool {
 		return results[i].CreatedAt.Before(results[j].CreatedAt)
 	})
 	return results, nil
+}
+
+// containsAll reports whether haystack contains every element in needles.
+func containsAll(haystack, needles []string) bool {
+	for _, need := range needles {
+		found := false
+		for _, h := range haystack {
+			if h == need {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
 }
 
 func matchesTaskFilter(t *model.Task, f TaskFilter) bool {
@@ -135,19 +189,8 @@ func matchesTaskFilter(t *model.Task, f TaskFilter) bool {
 			return false
 		}
 	}
-	if len(f.Labels) > 0 {
-		for _, want := range f.Labels {
-			found := false
-			for _, l := range t.Labels {
-				if l == want {
-					found = true
-					break
-				}
-			}
-			if !found {
-				return false
-			}
-		}
+	if len(f.Labels) > 0 && !containsAll(t.Labels, f.Labels) {
+		return false
 	}
 	if f.Search != "" && !fuzzy.MatchFold(f.Search, t.Title) {
 		return false
@@ -187,27 +230,11 @@ func (s *YAMLStore) SaveActivityLog(log *model.ActivityLog) error {
 }
 
 func (s *YAMLStore) ListActivity(filter ActivityFilter) ([]*model.ActivityEntry, error) {
-	entries, err := os.ReadDir(filepath.Join(s.dataDir, "activity"))
-	if err != nil {
-		return nil, err
-	}
-
 	var results []*model.ActivityEntry
-	for _, e := range entries {
-		date, ok := parseDateFromFilename(e.Name())
-		if !ok {
-			continue
-		}
-		if filter.From != nil && date.Before(*filter.From) {
-			continue
-		}
-		if filter.To != nil && date.After(*filter.To) {
-			continue
-		}
-
+	err := s.walkActivityFiles(filter.From, filter.To, func(date time.Time) error {
 		log, err := s.GetActivityLog(date)
 		if err != nil {
-			continue
+			return nil
 		}
 		for i := range log.Entries {
 			ae := &log.Entries[i]
@@ -216,8 +243,11 @@ func (s *YAMLStore) ListActivity(filter ActivityFilter) ([]*model.ActivityEntry,
 				results = append(results, &ec)
 			}
 		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-
 	sort.Slice(results, func(i, j int) bool {
 		return results[i].Timestamp.Before(results[j].Timestamp)
 	})
@@ -228,19 +258,8 @@ func matchesActivityFilter(e *model.ActivityEntry, f ActivityFilter) bool {
 	if f.TaskRef != "" && e.TaskRef != f.TaskRef {
 		return false
 	}
-	if len(f.Tags) > 0 {
-		for _, want := range f.Tags {
-			found := false
-			for _, tag := range e.Tags {
-				if tag == want {
-					found = true
-					break
-				}
-			}
-			if !found {
-				return false
-			}
-		}
+	if len(f.Tags) > 0 && !containsAll(e.Tags, f.Tags) {
+		return false
 	}
 	if f.Search != "" && !fuzzy.MatchFold(f.Search, e.Description) {
 		return false
