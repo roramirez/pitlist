@@ -364,6 +364,7 @@ Results are grouped: Tasks first, then Activity entries. Each result shows its d
 data_dir: "~/pitlist"      # where YAML files are stored
 editor: ""                  # falls back to $EDITOR
 week_start: monday
+contexts: [work, personal, other]
 git:
   auto_commit: true
 tui:
@@ -371,6 +372,41 @@ tui:
 ```
 
 Override data dir at runtime: `PITLIST_DATA_DIR=/path/to/dir pitlist`
+
+---
+
+## Scopes (named profiles)
+
+Scopes let you maintain completely separate data directories for different areas of your life. Each scope has its own YAML files, git history, and context list.
+
+Define profiles in `~/.config/pitlist/config.yaml`:
+
+```yaml
+data_dir: "~/pitlist"           # default when no --scope is given
+contexts: [work, personal]
+
+profiles:
+  work:
+    data_dir: "~/pitlist-work"
+    contexts: [work, meetings, reviews]
+  personal:
+    data_dir: "~/pitlist-personal"
+    contexts: [personal, health, home]
+```
+
+Activate a scope:
+
+```bash
+pitlist --scope work              # flag (any subcommand)
+pitlist --scope work list
+pitlist --scope personal log "ran 5k"
+
+PITLIST_SCOPE=work pitlist        # environment variable
+```
+
+- Only `data_dir` and `contexts` can be overridden per profile; all other settings (`git`, `tui`, `editor`) are inherited from the base config.
+- If `--scope` names a profile that does not exist, pitlist exits with an error listing the available scopes.
+- Scopes are independent — they have separate YAML files and separate git repos under their respective `data_dir`.
 
 ---
 

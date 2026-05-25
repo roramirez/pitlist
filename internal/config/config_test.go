@@ -94,3 +94,73 @@ func TestLoadEmptyDataDirFallsBackToDefault(t *testing.T) {
 		t.Error("DataDir should have been set to defaultDataDir() as fallback")
 	}
 }
+
+func TestApplyScopeEmpty(t *testing.T) {
+	cfg := &Config{DataDir: "/base", Contexts: []string{"work"}}
+	if err := cfg.ApplyScope(""); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.DataDir != "/base" {
+		t.Errorf("DataDir changed unexpectedly: %v", cfg.DataDir)
+	}
+}
+
+func TestApplyScopeUnknown(t *testing.T) {
+	cfg := &Config{Profiles: map[string]Profile{"work": {DataDir: "/work"}}}
+	err := cfg.ApplyScope("personal")
+	if err == nil {
+		t.Fatal("expected error for unknown scope")
+	}
+	if !strings.Contains(err.Error(), "work") {
+		t.Errorf("error should list available scopes, got: %v", err)
+	}
+}
+
+func TestApplyScopeOverridesDataDir(t *testing.T) {
+	cfg := &Config{
+		DataDir:  "/base",
+		Contexts: []string{"all"},
+		Profiles: map[string]Profile{
+			"work": {DataDir: "/work"},
+		},
+	}
+	if err := cfg.ApplyScope("work"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.DataDir != "/work" {
+		t.Errorf("DataDir = %q, want /work", cfg.DataDir)
+	}
+	if len(cfg.Contexts) != 1 || cfg.Contexts[0] != "all" {
+		t.Errorf("Contexts should be unchanged, got %v", cfg.Contexts)
+	}
+}
+
+func TestApplyScopeOverridesContexts(t *testing.T) {
+	cfg := &Config{
+		DataDir:  "/base",
+		Contexts: []string{"all"},
+		Profiles: map[string]Profile{
+			"work": {Contexts: []string{"work", "meetings"}},
+		},
+	}
+	if err := cfg.ApplyScope("work"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(cfg.Contexts) != 2 || cfg.Contexts[0] != "work" {
+		t.Errorf("Contexts = %v, want [work meetings]", cfg.Contexts)
+	}
+	if cfg.DataDir != "/base" {
+		t.Errorf("DataDir changed unexpectedly: %v", cfg.DataDir)
+	}
+}
+
+func TestApplyScopeNoProfiles(t *testing.T) {
+	cfg := &Config{}
+	err := cfg.ApplyScope("work")
+	if err == nil {
+		t.Fatal("expected error when no profiles defined")
+	}
+	if !strings.Contains(err.Error(), "(none)") {
+		t.Errorf("error should mention no profiles, got: %v", err)
+	}
+}

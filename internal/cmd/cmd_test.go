@@ -995,3 +995,53 @@ func TestRootDemoFlagExists(t *testing.T) {
 		t.Errorf("--demo default = %q, want false", f.DefValue)
 	}
 }
+
+// ── root --scope flag ────────────────────────────────────────────────────────
+
+func TestRootScopeFlagExists(t *testing.T) {
+	root := NewRootCmd()
+	f := root.PersistentFlags().Lookup("scope")
+	if f == nil {
+		t.Fatal("--scope flag not registered on root command")
+	}
+	if f.DefValue != "" {
+		t.Errorf("--scope default = %q, want empty string", f.DefValue)
+	}
+}
+
+func TestRootScopeFlagPropagatestoSubcommands(t *testing.T) {
+	root := NewRootCmd()
+	for _, sub := range root.Commands() {
+		f := sub.InheritedFlags().Lookup("scope")
+		if f == nil {
+			t.Errorf("subcommand %q does not inherit --scope flag", sub.Name())
+		}
+	}
+}
+
+func TestRootScopeUnknownReturnsError(t *testing.T) {
+	setupTest(t)
+	// Override cfg with a real config that has no profiles so ApplyScope fails.
+	cfg = &config.Config{DataDir: t.TempDir()}
+	root := NewRootCmd()
+	root.SetArgs([]string{"--scope", "nonexistent", "list"})
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("expected error for unknown scope")
+	}
+}
+
+func TestRootScopeEnvVar(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PITLIST_SCOPE", "work")
+	cfg = &config.Config{
+		DataDir: dir,
+		Profiles: map[string]config.Profile{
+			"work": {DataDir: dir},
+		},
+	}
+	// ApplyScope with a valid profile should not error.
+	if err := cfg.ApplyScope("work"); err != nil {
+		t.Fatalf("ApplyScope work: %v", err)
+	}
+}

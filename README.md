@@ -291,6 +291,34 @@ PITLIST_DATA_DIR=/path/to/dir pitlist
 
 ---
 
+## Scopes
+
+Keep work and personal data completely separate — different files, different git history.
+
+```yaml
+# ~/.config/pitlist/config.yaml
+data_dir: "~/pitlist"
+contexts: [personal]
+
+profiles:
+  work:
+    data_dir: "~/pitlist-work"
+    contexts: [work, meetings, reviews]
+  personal:
+    data_dir: "~/pitlist-personal"
+    contexts: [personal, health, home]
+```
+
+```bash
+pitlist --scope work              # use work profile
+pitlist --scope work list
+PITLIST_SCOPE=personal pitlist    # via env var
+```
+
+Each scope has its own `data_dir` and `contexts`. All other settings are inherited from the base config.
+
+---
+
 ## Contexts
 
 Contexts group tasks visually within a day. Set your own in config:
