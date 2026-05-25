@@ -25,9 +25,9 @@ func newCarryCmd() *cobra.Command {
 
 			var destDate time.Time
 			if toStr != "" {
-				destDate, err = time.Parse(model.DateFormat, toStr)
+				destDate, err = parseDate(toStr)
 				if err != nil {
-					return fmt.Errorf("invalid --to date: %w", err)
+					return fmt.Errorf("invalid --to date %q: use %s", toStr, dateKeywordsHint)
 				}
 			} else {
 				destDate = srcDate.AddDate(0, 0, 1)
@@ -42,7 +42,7 @@ func newCarryCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&toStr, "to", "", "destination date (YYYY-MM-DD, default tomorrow)")
+	cmd.Flags().StringVar(&toStr, "to", "", "destination date:"+dateFlag)
 	return cmd
 }
 

@@ -26,9 +26,9 @@ func newAddCmd() *cobra.Command {
 			var day time.Time
 			var err error
 			if date != "" {
-				day, err = time.Parse(model.DateFormat, date)
+				day, err = parseDate(date)
 				if err != nil {
-					return fmt.Errorf("invalid date %q: use YYYY-MM-DD", date)
+					return fmt.Errorf("invalid date %q: use %s", date, dateKeywordsHint)
 				}
 			} else {
 				day = today()
@@ -70,6 +70,6 @@ func newAddCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&priority, "priority", "p", "medium", "priority: low|medium|high")
 	cmd.Flags().StringVarP(&context, "context", "c", "", "context: work|personal|other")
 	cmd.Flags().StringVar(&due, "due", "", "due date (YYYY-MM-DD)")
-	cmd.Flags().StringVar(&date, "date", "", "plan for this date (YYYY-MM-DD, default today)")
+	cmd.Flags().StringVar(&date, "date", "", "plan for this date:"+dateFlag)
 	return cmd
 }

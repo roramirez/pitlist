@@ -126,6 +126,33 @@ func TestAddCmdInvalidDate(t *testing.T) {
 	}
 }
 
+func TestAddCmdDateKeywords(t *testing.T) {
+	cases := []struct {
+		keyword string
+		want    time.Time
+	}{
+		{"today", today()},
+		{"tomorrow", today().AddDate(0, 0, 1)},
+		{"yesterday", today().AddDate(0, 0, -1)},
+		{"next_week", weekStart(today()).AddDate(0, 0, 7)},
+		{"in_a_week", today().AddDate(0, 0, 7)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.keyword, func(t *testing.T) {
+			s := setupTest(t)
+			cmd := newAddCmd()
+			cmd.SetArgs([]string{"Keyword task", "--date", tc.keyword})
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("add --date %s: %v", tc.keyword, err)
+			}
+			plan, _ := s.GetDayPlan(tc.want)
+			if len(plan.Tasks) != 1 || plan.Tasks[0].Title != "Keyword task" {
+				t.Errorf("task not on expected date %v; tasks: %v", tc.want, plan.Tasks)
+			}
+		})
+	}
+}
+
 func TestAddCmdUnknownPriorityDefaultsMedium(t *testing.T) {
 	s := setupTest(t)
 	cmd := newAddCmd()
@@ -389,6 +416,27 @@ func TestCarryCmdToDate(t *testing.T) {
 	}
 }
 
+func TestCarryCmdToKeyword(t *testing.T) {
+	s := setupTest(t)
+	srcDate := today()
+	task := model.Task{
+		ID: "t-carry-kw", Title: "Carry keyword", Status: model.StatusTodo,
+		CreatedAt: srcDate, UpdatedAt: srcDate,
+	}
+	seedTask(t, s, srcDate, task)
+
+	cmd := newCarryCmd()
+	cmd.SetArgs([]string{"t-carry-kw", "--to", "tomorrow"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("carry --to tomorrow: %v", err)
+	}
+
+	destPlan, _ := s.GetDayPlan(today().AddDate(0, 0, 1))
+	if len(destPlan.Tasks) != 1 || destPlan.Tasks[0].ID != "t-carry-kw" {
+		t.Errorf("task not on tomorrow, got %v", destPlan.Tasks)
+	}
+}
+
 func TestCarryCmdInvalidDate(t *testing.T) {
 	s := setupTest(t)
 	date := today()
@@ -465,6 +513,20 @@ func TestLogAddCmdWithDate(t *testing.T) {
 	}
 }
 
+func TestLogAddCmdDateKeyword(t *testing.T) {
+	s := setupTest(t)
+	cmd := newLogAddCmd()
+	cmd.SetArgs([]string{"Keyword entry", "--date", "yesterday"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("log add --date yesterday: %v", err)
+	}
+
+	actLog, _ := s.GetActivityLog(today().AddDate(0, 0, -1))
+	if len(actLog.Entries) != 1 || actLog.Entries[0].Description != "Keyword entry" {
+		t.Errorf("entry not on yesterday, got %v", actLog.Entries)
+	}
+}
+
 func TestLogAddCmdInvalidDate(t *testing.T) {
 	setupTest(t)
 	cmd := newLogAddCmd()
@@ -533,6 +595,24 @@ func TestLogListCmdInvalidTo(t *testing.T) {
 	cmd.SetArgs([]string{"--to", "bad"})
 	if err := cmd.Execute(); err == nil {
 		t.Error("expected error for invalid --to")
+	}
+}
+
+func TestLogListCmdDateKeyword(t *testing.T) {
+	s := setupTest(t)
+	target := today().AddDate(0, 0, -1)
+	al := &model.ActivityLog{
+		Date: target,
+		Entries: []model.ActivityEntry{
+			{ID: "a-kw-001", Timestamp: target, Description: "Yesterday entry"},
+		},
+	}
+	s.SaveActivityLog(al)
+
+	cmd := newLogListCmd()
+	cmd.SetArgs([]string{"--date", "yesterday"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("log list --date yesterday: %v", err)
 	}
 }
 
@@ -651,6 +731,24 @@ func TestAgendaCmdFromOnly(t *testing.T) {
 	cmd.SetArgs([]string{"--from", "2026-05-01"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("agenda --from: %v", err)
+	}
+}
+
+func TestAgendaCmdFromToKeyword(t *testing.T) {
+	setupTest(t)
+	cmd := newAgendaCmd()
+	cmd.SetArgs([]string{"--from", "today", "--to", "next_week"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("agenda --from today --to next_week: %v", err)
+	}
+}
+
+func TestAgendaCmdFromKeyword(t *testing.T) {
+	setupTest(t)
+	cmd := newAgendaCmd()
+	cmd.SetArgs([]string{"--from", "tomorrow"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("agenda --from tomorrow: %v", err)
 	}
 }
 

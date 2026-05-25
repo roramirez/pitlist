@@ -119,6 +119,35 @@ IDs encode the date to make them human-readable and usable in CLI arguments:
 
 ---
 
+## Date Keywords
+
+Wherever a date flag is accepted (`--date`, `--from`, `--to`) you can use either `YYYY-MM-DD` or a natural-language keyword:
+
+| Keyword | Resolves to |
+|---------|-------------|
+| `today` | current date |
+| `tomorrow` | today + 1 day |
+| `yesterday` | today − 1 day |
+| `next_week` | Monday of next week |
+| `last_week` | Monday of last week |
+| `in_a_week` | today + 7 days (same weekday) |
+| `next_month` | 1st of next month |
+| `last_month` | 1st of last month |
+| `in_a_month` | today + 30 days |
+| `monday` … `sunday` | upcoming occurrence of that weekday (including today if it matches) |
+| `next_monday` … `next_sunday` | strictly next occurrence (never today) |
+
+Examples:
+
+```bash
+pitlist add "Prep for review" --date friday
+pitlist carry t-20260519-001 --to next_monday
+pitlist agenda --from today --to next_week
+pitlist log list --date yesterday
+```
+
+---
+
 ## CLI Commands
 
 All commands work without the TUI. The TUI launches when no subcommand is given.
@@ -126,20 +155,20 @@ All commands work without the TUI. The TUI launches when no subcommand is given.
 ### Tasks
 
 ```bash
-pitlist add "Title" [--context work] [--label work] [--priority high] [--due YYYY-MM-DD] [--date YYYY-MM-DD]
+pitlist add "Title" [--context work] [--label work] [--priority high] [--due YYYY-MM-DD] [--date <date>]
 pitlist done <id>
 pitlist list                          # today, todo + in_progress
 pitlist list --label work             # all open work tasks across days
 pitlist list --week                   # this week
 pitlist list --status done
-pitlist list --from YYYY-MM-DD --to YYYY-MM-DD
-pitlist list --date YYYY-MM-DD
+pitlist list --from <date> --to <date>
+pitlist list --date <date>
 pitlist show <id>
 pitlist edit <id>                     # opens day file in $EDITOR
 pitlist delete <id>                   # prompts confirmation
 pitlist delete <id> --force
 pitlist carry <id>                    # carries to tomorrow
-pitlist carry <id> --to YYYY-MM-DD
+pitlist carry <id> --to <date>
 ```
 
 ### Agenda
@@ -147,16 +176,16 @@ pitlist carry <id> --to YYYY-MM-DD
 ```bash
 pitlist agenda                        # next 7 days, pending only
 pitlist agenda -n 14                  # next N days
-pitlist agenda --from YYYY-MM-DD --to YYYY-MM-DD
+pitlist agenda --from <date> --to <date>
 pitlist agenda --label work
 ```
 
 ### Activity log
 
 ```bash
-pitlist log "Description" [--tag debugging] [--ref t-20260518-001] [--duration 45] [--date YYYY-MM-DD]
+pitlist log "Description" [--tag debugging] [--ref t-20260518-001] [--duration 45] [--date <date>]
 pitlist log list                      # today
-pitlist log list --date YYYY-MM-DD
+pitlist log list --date <date>
 pitlist log list --tag debugging
 pitlist log list --week
 pitlist log link <activity-id> <task-id>   # link after the fact
