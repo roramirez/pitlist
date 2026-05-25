@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Named profiles / scopes** — define multiple profiles in `config.yaml` and activate one with `--scope <name>` or `PITLIST_SCOPE=<name>`; each scope has its own `data_dir`, `contexts`, and git history
+- **Date keywords** — all `--date`, `--from`, and `--to` flags now accept natural-language words (`today`, `tomorrow`, `yesterday`, `next_week`, `last_week`, `in_a_week`, `next_month`, `last_month`, `in_a_month`, `monday`…`sunday`, `next_monday`…`next_sunday`) in addition to `YYYY-MM-DD`
+
 ## [0.1.0] - 2026-05-23
 
 ### Added
