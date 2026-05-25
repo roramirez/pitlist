@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/roramirez/pitlist/internal/config"
 	"github.com/roramirez/pitlist/internal/demo"
@@ -14,6 +15,7 @@ var (
 	cfg      *config.Config
 	store    *storage.YAMLStore
 	demoMode bool
+	scope    string
 )
 
 func NewRootCmd() *cobra.Command {
@@ -28,6 +30,13 @@ func NewRootCmd() *cobra.Command {
 			cfg, err = config.Load()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
+			}
+			activeScope := scope
+			if activeScope == "" {
+				activeScope = os.Getenv("PITLIST_SCOPE")
+			}
+			if err := cfg.ApplyScope(activeScope); err != nil {
+				return err
 			}
 			store, err = storage.NewYAMLStore(cfg.DataDir)
 			if err != nil {
@@ -52,6 +61,7 @@ func NewRootCmd() *cobra.Command {
 		},
 	}
 
+	root.PersistentFlags().StringVar(&scope, "scope", "", "config profile to use (defined under profiles: in config.yaml)")
 	root.Flags().BoolVar(&demoMode, "demo", false, "run with pre-seeded demo data")
 
 	root.AddCommand(

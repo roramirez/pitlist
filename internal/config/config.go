@@ -1,8 +1,11 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 
 	"github.com/spf13/viper"
 )
@@ -15,13 +18,51 @@ type TUIConfig struct {
 	ShowDoneTasks bool `mapstructure:"show_done_tasks"`
 }
 
+// Profile overrides selected fields from the base config for a named scope.
+type Profile struct {
+	DataDir  string   `mapstructure:"data_dir"`
+	Contexts []string `mapstructure:"contexts"`
+}
+
 type Config struct {
-	DataDir   string    `mapstructure:"data_dir"`
-	Editor    string    `mapstructure:"editor"`
-	WeekStart string    `mapstructure:"week_start"`
-	Contexts  []string  `mapstructure:"contexts"`
-	Git       GitConfig `mapstructure:"git"`
-	TUI       TUIConfig `mapstructure:"tui"`
+	DataDir   string             `mapstructure:"data_dir"`
+	Editor    string             `mapstructure:"editor"`
+	WeekStart string             `mapstructure:"week_start"`
+	Contexts  []string           `mapstructure:"contexts"`
+	Git       GitConfig          `mapstructure:"git"`
+	TUI       TUIConfig          `mapstructure:"tui"`
+	Profiles  map[string]Profile `mapstructure:"profiles"`
+}
+
+// ApplyScope merges the named profile into the config, overriding DataDir and
+// Contexts. Returns an error if the scope name is not found in Profiles.
+func (c *Config) ApplyScope(scope string) error {
+	if scope == "" {
+		return nil
+	}
+	p, ok := c.Profiles[scope]
+	if !ok {
+		return fmt.Errorf("scope %q not defined in config (available: %s)", scope, availableScopes(c.Profiles))
+	}
+	if p.DataDir != "" {
+		c.DataDir = expandHome(p.DataDir)
+	}
+	if len(p.Contexts) > 0 {
+		c.Contexts = p.Contexts
+	}
+	return nil
+}
+
+func availableScopes(profiles map[string]Profile) string {
+	if len(profiles) == 0 {
+		return "(none)"
+	}
+	names := make([]string, 0, len(profiles))
+	for k := range profiles {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	return strings.Join(names, ", ")
 }
 
 func Load() (*Config, error) {
