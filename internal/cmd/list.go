@@ -15,6 +15,7 @@ func newListCmd() *cobra.Command {
 	var fromStr, toStr string
 	var week bool
 	var date string
+	var showDone bool
 
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -41,6 +42,9 @@ func newListCmd() *cobra.Command {
 			if len(filter.Statuses) == 0 {
 				filter.Statuses = []model.TaskStatus{model.StatusTodo, model.StatusInProgress}
 			}
+			if showDone {
+				filter.Statuses = append(filter.Statuses, model.StatusDone)
+			}
 
 			tasks, err := store.ListTasks(filter)
 			if err != nil {
@@ -65,6 +69,7 @@ func newListCmd() *cobra.Command {
 	cmd.Flags().StringVar(&toStr, "to", "", "to date (YYYY-MM-DD)")
 	cmd.Flags().BoolVarP(&week, "week", "w", false, "this week")
 	cmd.Flags().StringVar(&date, "date", "", "specific date (YYYY-MM-DD)")
+	cmd.Flags().BoolVar(&showDone, "done", false, "include completed tasks")
 	return cmd
 }
 

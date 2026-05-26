@@ -295,11 +295,11 @@ func (a App) renderStatusBar() string {
 	var hints string
 	switch a.activeTab {
 	case tabTasks:
-		hints = "a add  e edit  d done  c carry  n notes  L log activity  D delete  / filter  h/l day  tab detail  1-5 tabs  q quit"
+		hints = "a add  e edit  d done  f toggle done  c carry  n notes  L log activity  D delete  / filter  h/l day  tab detail  1-5 tabs  q quit"
 	case tabActivity:
 		hints = "a add  D delete  j/k navigate  h/l day  1-5 tabs  q quit"
 	case tabAgenda:
-		hints = "j/k navigate  d done  enter → Tasks  r refresh  1-5 tabs  q quit"
+		hints = "j/k navigate  d done  f toggle done  enter → Tasks  r refresh  1-5 tabs  q quit"
 	case tabSearch:
 		if a.searchView.IsInputActive() {
 			hints = "type to search  ↓/enter → navigate results  esc → stop typing  q quit  1-5 tabs"

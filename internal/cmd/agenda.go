@@ -13,6 +13,7 @@ func newAgendaCmd() *cobra.Command {
 	var days int
 	var labels []string
 	var from, to string
+	var showDone bool
 
 	cmd := &cobra.Command{
 		Use:   "agenda",
@@ -22,7 +23,7 @@ func newAgendaCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return printAgenda(start, end, labels)
+			return printAgenda(start, end, labels, showDone)
 		},
 	}
 
@@ -30,6 +31,7 @@ func newAgendaCmd() *cobra.Command {
 	cmd.Flags().StringArrayVarP(&labels, "label", "l", nil, "filter by label")
 	cmd.Flags().StringVar(&from, "from", "", "start date:"+dateFlag)
 	cmd.Flags().StringVar(&to, "to", "", "end date:"+dateFlag)
+	cmd.Flags().BoolVar(&showDone, "done", false, "include completed tasks")
 	return cmd
 }
 
@@ -57,7 +59,7 @@ func resolveAgendaRange(from, to string, days int) (start, end time.Time, err er
 	return start, end, nil
 }
 
-func printAgenda(start, end time.Time, labels []string) error {
+func printAgenda(start, end time.Time, labels []string, showDone bool) error {
 	anyFound := false
 	for d := start; !d.After(end); d = d.AddDate(0, 0, 1) {
 		plan, err := store.GetDayPlan(d)
@@ -65,31 +67,38 @@ func printAgenda(start, end time.Time, labels []string) error {
 			continue
 		}
 
-		var pending []model.Task
+		var matched []model.Task
 		for _, t := range plan.Tasks {
-			if t.Status == model.StatusDone || t.Status == model.StatusCancelled {
+			if t.Status == model.StatusCancelled {
+				continue
+			}
+			if t.Status == model.StatusDone && !showDone {
 				continue
 			}
 			if !matchLabels(t.Labels, labels) {
 				continue
 			}
-			pending = append(pending, t)
+			matched = append(matched, t)
 		}
 
-		if len(pending) == 0 {
+		if len(matched) == 0 {
 			continue
 		}
 
 		anyFound = true
 		printDayHeader(d)
-		for i := range pending {
-			printTask(&pending[i])
+		for i := range matched {
+			printTask(&matched[i])
 		}
 		fmt.Println()
 	}
 
 	if !anyFound {
-		fmt.Println("Nothing pending.")
+		if showDone {
+			fmt.Println("Nothing found.")
+		} else {
+			fmt.Println("Nothing pending.")
+		}
 	}
 	return nil
 }
