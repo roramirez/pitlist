@@ -2,11 +2,29 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
+	"github.com/roramirez/pitlist/internal/config"
 	"github.com/roramirez/pitlist/internal/model"
 )
+
+// loadConfig loads and applies scope for use outside of command RunE (e.g. shell completion).
+func loadConfig() (*config.Config, error) {
+	c, err := config.Load()
+	if err != nil {
+		return nil, err
+	}
+	activeScope := scope
+	if activeScope == "" {
+		activeScope = os.Getenv("PITLIST_SCOPE")
+	}
+	if err := c.ApplyScope(activeScope); err != nil {
+		return nil, err
+	}
+	return c, nil
+}
 
 const dateKeywordsHint = "YYYY-MM-DD or a keyword: today, tomorrow, yesterday, " +
 	"next_week, last_week, in_a_week, next_month, last_month, in_a_month, " +
