@@ -33,7 +33,10 @@ install:
 	go install $(LDFLAGS) $(CMD)
 
 run:
-	go run $(LDFLAGS) $(CMD)
+	go run $(LDFLAGS) $(CMD) $(filter-out $@,$(MAKECMDGOALS))
+
+%:
+	@:
 
 test:
 	go test -mod=readonly ./... -race
