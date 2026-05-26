@@ -1045,3 +1045,148 @@ func TestRootScopeEnvVar(t *testing.T) {
 		t.Fatalf("ApplyScope work: %v", err)
 	}
 }
+
+// ── add --future ──────────────────────────────────────────────────────────────
+
+func TestAddCmdFuture(t *testing.T) {
+	s := setupTest(t)
+
+	cmd := newAddCmd()
+	cmd.SetArgs([]string{"Backlog task", "--future"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("add --future: %v", err)
+	}
+
+	list, err := s.GetFutureList()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Tasks) != 1 || list.Tasks[0].Title != "Backlog task" {
+		t.Errorf("task not saved in future list, got %v", list.Tasks)
+	}
+	if list.Tasks[0].ID[0] != 'f' {
+		t.Errorf("future task ID should start with 'f', got %q", list.Tasks[0].ID)
+	}
+}
+
+func TestAddCmdFutureWithFlags(t *testing.T) {
+	s := setupTest(t)
+
+	cmd := newAddCmd()
+	cmd.SetArgs([]string{"Research task", "--future", "--priority", "high", "--label", "research", "--context", "work"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("add --future with flags: %v", err)
+	}
+
+	list, _ := s.GetFutureList()
+	if len(list.Tasks) != 1 {
+		t.Fatalf("expected 1 task, got %d", len(list.Tasks))
+	}
+	task := list.Tasks[0]
+	if task.Priority != model.PriorityHigh {
+		t.Errorf("priority = %q, want high", task.Priority)
+	}
+	if task.Context != "work" {
+		t.Errorf("context = %q, want work", task.Context)
+	}
+	if len(task.Labels) == 0 || task.Labels[0] != "research" {
+		t.Errorf("labels = %v, want [research]", task.Labels)
+	}
+}
+
+func TestAddCmdFutureDoesNotAddToDayPlan(t *testing.T) {
+	s := setupTest(t)
+
+	cmd := newAddCmd()
+	cmd.SetArgs([]string{"Future only", "--future"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+
+	plan, _ := s.GetDayPlan(today())
+	if len(plan.Tasks) != 0 {
+		t.Errorf("add --future should not add to day plan, got %v", plan.Tasks)
+	}
+}
+
+// ── schedule ──────────────────────────────────────────────────────────────────
+
+func TestScheduleCmd(t *testing.T) {
+	s := setupTest(t)
+	now := time.Now().UTC()
+	list := &model.FutureList{
+		Tasks: []model.Task{
+			{ID: "f-20260525-001", Title: "Schedule me", Status: model.StatusTodo, CreatedAt: now, UpdatedAt: now},
+		},
+	}
+	s.SaveFutureList(list)
+
+	targetDate := today().AddDate(0, 0, 1)
+	cmd := newScheduleCmd()
+	cmd.SetArgs([]string{"f-20260525-001", "--date", targetDate.Format("2006-01-02")})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("schedule: %v", err)
+	}
+
+	// Task moved to day plan
+	plan, _ := s.GetDayPlan(targetDate)
+	if len(plan.Tasks) != 1 || plan.Tasks[0].Title != "Schedule me" {
+		t.Errorf("task not found on target day, got %v", plan.Tasks)
+	}
+	if plan.Tasks[0].ID[0] != 't' {
+		t.Errorf("scheduled task ID should start with 't', got %q", plan.Tasks[0].ID)
+	}
+
+	// Removed from future list
+	remaining, _ := s.GetFutureList()
+	if len(remaining.Tasks) != 0 {
+		t.Errorf("task should be removed from future list, got %v", remaining.Tasks)
+	}
+}
+
+func TestScheduleCmdDefaultsToToday(t *testing.T) {
+	s := setupTest(t)
+	now := time.Now().UTC()
+	list := &model.FutureList{
+		Tasks: []model.Task{
+			{ID: "f-20260525-001", Title: "For today", Status: model.StatusTodo, CreatedAt: now, UpdatedAt: now},
+		},
+	}
+	s.SaveFutureList(list)
+
+	cmd := newScheduleCmd()
+	cmd.SetArgs([]string{"f-20260525-001"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("schedule (no date): %v", err)
+	}
+
+	plan, _ := s.GetDayPlan(today())
+	if len(plan.Tasks) != 1 {
+		t.Errorf("expected task on today's plan, got %v", plan.Tasks)
+	}
+}
+
+func TestScheduleCmdNotFound(t *testing.T) {
+	setupTest(t)
+	cmd := newScheduleCmd()
+	cmd.SetArgs([]string{"f-99999999-001"})
+	if err := cmd.Execute(); err == nil {
+		t.Error("expected error for non-existent future task ID")
+	}
+}
+
+func TestScheduleCmdInvalidDate(t *testing.T) {
+	s := setupTest(t)
+	now := time.Now().UTC()
+	s.SaveFutureList(&model.FutureList{
+		Tasks: []model.Task{
+			{ID: "f-20260525-001", Title: "Task", Status: model.StatusTodo, CreatedAt: now, UpdatedAt: now},
+		},
+	})
+
+	cmd := newScheduleCmd()
+	cmd.SetArgs([]string{"f-20260525-001", "--date", "not-a-date"})
+	if err := cmd.Execute(); err == nil {
+		t.Error("expected error for invalid date")
+	}
+}

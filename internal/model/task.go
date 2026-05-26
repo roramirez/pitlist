@@ -49,3 +49,7 @@ type DayPlan struct {
 	Date  time.Time `yaml:"date"`
 	Tasks []Task    `yaml:"tasks"`
 }
+
+type FutureList struct {
+	Tasks []Task `yaml:"tasks"`
+}
