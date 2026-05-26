@@ -1,6 +1,8 @@
 package views
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -833,5 +835,241 @@ func TestFutureViewHandleExistingFutureAction(t *testing.T) {
 	_, cmd = v.handleExistingFutureAction(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}}, t0)
 	if cmd == nil {
 		t.Error("'d' should return a cmd")
+	}
+}
+
+// ── saveFutureListMsg error branch ────────────────────────────────────────────
+
+func TestSaveFutureListMsgError(t *testing.T) {
+	dir := t.TempDir()
+	store, _ := storage.NewYAMLStore(dir)
+	v := NewFutureView(store)
+
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatalf("Chmod: %v", err)
+	}
+	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+
+	list := &model.FutureList{}
+	msg := v.saveFutureListMsg(list)
+	if _, ok := msg.(errMsg); !ok {
+		t.Fatalf("expected errMsg on write failure, got %T", msg)
+	}
+}
+
+// ── loadLinkedActivities ──────────────────────────────────────────────────────
+
+func TestLoadLinkedActivitiesEmptyID(t *testing.T) {
+	s := newFutureStore(t)
+	v := NewFutureView(s)
+
+	cmd := v.loadLinkedActivities("")
+	if cmd != nil {
+		t.Error("expected nil cmd for empty taskID")
+	}
+}
+
+func TestLoadLinkedActivitiesTaskNotFound(t *testing.T) {
+	s := newFutureStore(t)
+	v := NewFutureView(s)
+
+	cmd := v.loadLinkedActivities("no-such-id")
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd")
+	}
+	msg := cmd()
+	m, ok := msg.(FutureLinkedActivitiesMsg)
+	if !ok {
+		t.Fatalf("expected FutureLinkedActivitiesMsg, got %T", msg)
+	}
+	if len(m.Entries) != 0 {
+		t.Errorf("expected empty entries for missing task, got %d", len(m.Entries))
+	}
+}
+
+func TestLoadLinkedActivitiesNoRefs(t *testing.T) {
+	s := newFutureStore(t)
+	now := time.Now().UTC()
+	task := model.Task{ID: "f-001", Title: "No refs", Status: model.StatusTodo, CreatedAt: now, UpdatedAt: now}
+	seedFutureTask(t, s, task)
+
+	v := NewFutureView(s)
+	cmd := v.loadLinkedActivities("f-001")
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd")
+	}
+	msg := cmd()
+	m, ok := msg.(FutureLinkedActivitiesMsg)
+	if !ok {
+		t.Fatalf("expected FutureLinkedActivitiesMsg, got %T", msg)
+	}
+	if len(m.Entries) != 0 {
+		t.Errorf("expected empty entries for task with no refs, got %d", len(m.Entries))
+	}
+}
+
+func TestLoadLinkedActivitiesWithRefs(t *testing.T) {
+	s := newFutureStore(t)
+	now := time.Now().UTC()
+	dateStr := now.Format(model.DateFormat)
+
+	actEntry := model.ActivityEntry{
+		ID:          "a-001",
+		Timestamp:   now,
+		Description: "did some work",
+	}
+	actLog := &model.ActivityLog{Date: now, Entries: []model.ActivityEntry{actEntry}}
+	if err := s.SaveActivityLog(actLog); err != nil {
+		t.Fatalf("SaveActivityLog: %v", err)
+	}
+
+	task := model.Task{
+		ID:           "f-001",
+		Title:        "Has refs",
+		Status:       model.StatusTodo,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+		ActivityRefs: []model.ActivityRef{{ID: "a-001", Date: dateStr}},
+	}
+	seedFutureTask(t, s, task)
+
+	v := NewFutureView(s)
+	cmd := v.loadLinkedActivities("f-001")
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd")
+	}
+	msg := cmd()
+	m, ok := msg.(FutureLinkedActivitiesMsg)
+	if !ok {
+		t.Fatalf("expected FutureLinkedActivitiesMsg, got %T", msg)
+	}
+	if len(m.Entries) != 1 || m.Entries[0].ID != "a-001" {
+		t.Errorf("expected entry a-001, got %v", m.Entries)
+	}
+}
+
+func TestLoadLinkedActivitiesGetActivitiesError(t *testing.T) {
+	dir := t.TempDir()
+	s, _ := storage.NewYAMLStore(dir)
+	now := time.Now().UTC()
+
+	// Task with no refs → GetActivitiesByRefs uses fallback date → reads activity file.
+	// Write corrupt YAML so GetActivityLog returns an error.
+	actPath := filepath.Join(dir, "activity", now.Format(model.DateFormat)+".yaml")
+	if err := os.WriteFile(actPath, []byte(": invalid: yaml: \x00"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	task := model.Task{ID: "f-001", Title: "Err task", Status: model.StatusTodo, CreatedAt: now, UpdatedAt: now}
+	seedFutureTask(t, s, task)
+
+	v := NewFutureView(s)
+	cmd := v.loadLinkedActivities("f-001")
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd")
+	}
+	msg := cmd()
+	if _, ok := msg.(errMsg); !ok {
+		t.Fatalf("expected errMsg, got %T", msg)
+	}
+}
+
+// ── scheduleTask missing branches ─────────────────────────────────────────────
+
+func TestScheduleTaskIDNotInList(t *testing.T) {
+	s := newFutureStore(t)
+	v := NewFutureView(s)
+
+	cmd := v.scheduleTask("no-such-id", "today")
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd")
+	}
+	msg := cmd()
+	if _, ok := msg.(FutureMsg); !ok {
+		t.Fatalf("expected FutureMsg when task not found, got %T", msg)
+	}
+}
+
+func TestScheduleTaskSaveFutureListFails(t *testing.T) {
+	dir := t.TempDir()
+	s, _ := storage.NewYAMLStore(dir)
+	now := time.Now().UTC()
+	task := model.Task{ID: "f-001", Title: "To schedule", Status: model.StatusTodo, CreatedAt: now, UpdatedAt: now}
+	seedFutureTask(t, s, task)
+
+	v := NewFutureView(s)
+
+	// make future.yaml itself unwritable so SaveFutureList fails
+	futureFile := filepath.Join(dir, "future.yaml")
+	if err := os.Chmod(futureFile, 0o444); err != nil {
+		t.Fatalf("Chmod: %v", err)
+	}
+	t.Cleanup(func() { os.Chmod(futureFile, 0o644) })
+
+	cmd := v.scheduleTask("f-001", "today")
+	msg := cmd()
+	if _, ok := msg.(errMsg); !ok {
+		t.Fatalf("expected errMsg when SaveFutureList fails, got %T", msg)
+	}
+}
+
+// ── future loadMsg error branch ───────────────────────────────────────────────
+
+func TestFutureLoadMsgError(t *testing.T) {
+	dir := t.TempDir()
+	s, _ := storage.NewYAMLStore(dir)
+
+	futureFile := filepath.Join(dir, "future.yaml")
+	if err := os.WriteFile(futureFile, []byte(": bad: yaml: \x00"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	v := NewFutureView(s)
+	msg := v.loadMsg()
+	if _, ok := msg.(errMsg); !ok {
+		t.Fatalf("expected errMsg when GetFutureList fails, got %T", msg)
+	}
+}
+
+// ── handleFutureAction missing branches ───────────────────────────────────────
+
+func TestHandleFutureActionAddInDetailPane(t *testing.T) {
+	s := newFutureStore(t)
+	v := NewFutureView(s)
+	v.pane = 1
+
+	v2, cmd := v.handleFutureAction(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}, nil)
+	if v2.adding {
+		t.Error("'a' in detail pane should not open add form")
+	}
+	if cmd != nil {
+		t.Error("cmd should be nil when 'a' pressed in detail pane")
+	}
+}
+
+func TestHandleFutureActionEmptyList(t *testing.T) {
+	s := newFutureStore(t)
+	v := NewFutureView(s)
+
+	v2, cmd := v.handleFutureAction(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}}, nil)
+	_ = v2
+	if cmd != nil {
+		t.Error("cmd should be nil when future task list is empty")
+	}
+}
+
+// ── updateSchedule typing branch ─────────────────────────────────────────────
+
+func TestUpdateScheduleTyping(t *testing.T) {
+	v, _ := futureViewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	v = v2
+
+	v2, cmd := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
+	v = v2
+	_ = cmd
+	if v.scheduleInput.Value() == "" {
+		t.Error("typing in schedule prompt should update the input value")
 	}
 }
