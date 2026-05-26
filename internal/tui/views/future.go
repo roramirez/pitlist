@@ -13,6 +13,11 @@ import (
 	"github.com/roramirez/pitlist/internal/storage"
 )
 
+const (
+	scheduleToday    = "today"
+	scheduleTomorrow = "tomorrow"
+)
+
 type FutureMsg struct {
 	List *model.FutureList
 }
@@ -157,61 +162,65 @@ func (v FutureView) updateNormal(msg tea.KeyMsg) (FutureView, tea.Cmd) {
 			return v, v.loadLinkedActivities(tasks[v.cursor].ID)
 		}
 	case "tab":
-		if v.pane == 0 {
-			v.pane = 1
-		} else {
-			v.pane = 0
-		}
-	case "a":
+		v.pane = 1 - v.pane
+	default:
+		return v.handleFutureAction(msg, tasks)
+	}
+	return v, nil
+}
+
+func (v FutureView) handleFutureAction(msg tea.KeyMsg, tasks []model.Task) (FutureView, tea.Cmd) {
+	if msg.String() == "a" {
 		if v.pane == 0 {
 			v.tForm = newTaskForm("", "", "", v.contexts, "", "medium")
 			v.adding = true
 			return v, textinput.Blink
 		}
+		return v, nil
+	}
+	if len(tasks) == 0 {
+		return v, nil
+	}
+	return v.handleExistingFutureAction(msg, tasks[v.cursor])
+}
+
+func (v FutureView) handleExistingFutureAction(msg tea.KeyMsg, t model.Task) (FutureView, tea.Cmd) {
+	switch msg.String() {
 	case "d":
-		if len(tasks) > 0 {
-			return v, v.toggleDone(tasks[v.cursor].ID)
-		}
-	case "e":
-		if len(tasks) > 0 {
-			t := tasks[v.cursor]
-			v.tForm = newTaskForm(t.ID, t.Title, t.Context, v.contexts, strings.Join(t.Labels, " "), string(t.Priority))
-			v.detailMode = futureDetailEditTask
-			v.pane = 1
-			return v, textinput.Blink
-		}
-	case "n":
-		if len(tasks) > 0 {
-			v.pane = 1
-			v.detailMode = futureDetailEditNotes
-			v.notesArea.Reset()
-			v.notesArea.SetValue(tasks[v.cursor].Notes)
-			v.notesArea.Focus()
-			return v, textarea.Blink
-		}
-	case "L":
-		if len(tasks) > 0 {
-			v.pane = 1
-			v.detailMode = futureDetailLogActivity
-			v.logForm = newQuickLogForm(tasks[v.cursor].ID)
-			return v, textinput.Blink
-		}
-	case "s":
-		if len(tasks) > 0 {
-			v.scheduleTaskID = tasks[v.cursor].ID
-			v.scheduleInput.Reset()
-			v.scheduleInput.SetValue("today")
-			v.scheduleInput.Focus()
-			v.detailMode = futureDetailSchedule
-			v.pane = 1
-			return v, textinput.Blink
-		}
+		return v, v.toggleDone(t.ID)
 	case "D":
-		if len(tasks) > 0 {
-			return v, v.deleteTask(tasks[v.cursor].ID)
-		}
+		return v, v.deleteTask(t.ID)
+	case "e":
+		v.tForm = newTaskForm(t.ID, t.Title, t.Context, v.contexts, strings.Join(t.Labels, " "), string(t.Priority))
+		v.detailMode = futureDetailEditTask
+		v.pane = 1
+		return v, textinput.Blink
+	case "n":
+		v.pane = 1
+		v.detailMode = futureDetailEditNotes
+		v.notesArea.Reset()
+		v.notesArea.SetValue(t.Notes)
+		v.notesArea.Focus()
+		return v, textarea.Blink
+	case "L":
+		v.pane = 1
+		v.detailMode = futureDetailLogActivity
+		v.logForm = newQuickLogForm(t.ID)
+		return v, textinput.Blink
+	case "s":
+		return v.openSchedulePrompt(t.ID)
 	}
 	return v, nil
+}
+
+func (v FutureView) openSchedulePrompt(taskID string) (FutureView, tea.Cmd) {
+	v.scheduleTaskID = taskID
+	v.scheduleInput.Reset()
+	v.scheduleInput.SetValue(scheduleToday)
+	v.scheduleInput.Focus()
+	v.detailMode = futureDetailSchedule
+	v.pane = 1
+	return v, textinput.Blink
 }
 
 func (v FutureView) updateAdding(msg tea.KeyMsg) (FutureView, tea.Cmd) {
@@ -279,50 +288,14 @@ func (v FutureView) updateTaskForm(msg tea.KeyMsg) (FutureView, tea.Cmd) {
 }
 
 func (v FutureView) handleFormKey(msg tea.KeyMsg) FutureView {
-	n := len(v.tForm.contexts)
-	switch v.tForm.focusIdx {
-	case 0:
-		v.tForm.title, _ = v.tForm.title.Update(msg)
-	case 1:
-		switch msg.String() {
-		case "left", "h":
-			if n > 0 {
-				v.tForm.contextIdx = (v.tForm.contextIdx-1+n+1)%(n+1) - 1
-				if v.tForm.contextIdx < -1 {
-					v.tForm.contextIdx = n - 1
-				}
-			}
-		case "right", "l":
-			if n > 0 {
-				v.tForm.contextIdx++
-				if v.tForm.contextIdx >= n {
-					v.tForm.contextIdx = -1
-				}
-			}
-		}
-	case 2:
-		v.tForm.labels, _ = v.tForm.labels.Update(msg)
-	case 3:
-		v.tForm.priority, _ = v.tForm.priority.Update(msg)
-	}
+	v.tForm = handleTaskFormKey(v.tForm, msg)
 	return v
 }
 
 func (v FutureView) focusTaskField() (FutureView, tea.Cmd) {
-	v.tForm.title.Blur()
-	v.tForm.labels.Blur()
-	v.tForm.priority.Blur()
-	switch v.tForm.focusIdx {
-	case 0:
-		v.tForm.title.Focus()
-		return v, textinput.Blink
-	case 1:
-		return v, nil
-	case 2:
-		v.tForm.labels.Focus()
-		return v, textinput.Blink
-	case 3:
-		v.tForm.priority.Focus()
+	var blink bool
+	v.tForm, blink = applyTaskFormFocus(v.tForm)
+	if blink {
 		return v, textinput.Blink
 	}
 	return v, nil
@@ -375,35 +348,14 @@ func (v FutureView) updateLogForm(msg tea.KeyMsg) (FutureView, tea.Cmd) {
 		return v.focusLogField()
 	default:
 		var cmd tea.Cmd
-		switch v.logForm.focusIdx {
-		case 0:
-			v.logForm.desc, cmd = v.logForm.desc.Update(msg)
-		case 1:
-			v.logForm.tags, cmd = v.logForm.tags.Update(msg)
-		case 2:
-			v.logForm.duration, cmd = v.logForm.duration.Update(msg)
-		case 3:
-			v.logForm.dateInput, cmd = v.logForm.dateInput.Update(msg)
-		}
+		v.logForm, cmd = updateLogFormField(v.logForm, msg)
 		return v, cmd
 	}
 }
 
 func (v FutureView) focusLogField() (FutureView, tea.Cmd) {
-	v.logForm.desc.Blur()
-	v.logForm.tags.Blur()
-	v.logForm.duration.Blur()
-	v.logForm.dateInput.Blur()
-	switch v.logForm.focusIdx {
-	case 0:
-		v.logForm.desc.Focus()
-	case 1:
-		v.logForm.tags.Focus()
-	case 2:
-		v.logForm.duration.Focus()
-	case 3:
-		v.logForm.dateInput.Focus()
-	}
+	v.logForm = blurAllLogFields(v.logForm)
+	v.logForm = focusActiveLogField(v.logForm)
 	return v, textinput.Blink
 }
 
@@ -448,11 +400,15 @@ func (v FutureView) saveNewTask() tea.Cmd {
 			UpdatedAt: now,
 		}
 		list.Tasks = append(list.Tasks, task)
-		if err := v.store.SaveFutureList(list); err != nil {
-			return errMsg{err}
-		}
-		return v.loadMsg()
+		return v.saveFutureListMsg(list)
 	}
+}
+
+func (v FutureView) saveFutureListMsg(list *model.FutureList) tea.Msg {
+	if err := v.store.SaveFutureList(list); err != nil {
+		return errMsg{err}
+	}
+	return v.loadMsg()
 }
 
 func (v FutureView) saveEditTask() tea.Cmd {
@@ -478,10 +434,7 @@ func (v FutureView) saveEditTask() tea.Cmd {
 				break
 			}
 		}
-		if err := v.store.SaveFutureList(list); err != nil {
-			return errMsg{err}
-		}
-		return v.loadMsg()
+		return v.saveFutureListMsg(list)
 	}
 }
 
@@ -498,10 +451,7 @@ func (v FutureView) saveNotes(id, notes string) tea.Cmd {
 				break
 			}
 		}
-		if err := v.store.SaveFutureList(list); err != nil {
-			return errMsg{err}
-		}
-		return v.loadMsg()
+		return v.saveFutureListMsg(list)
 	}
 }
 
@@ -525,10 +475,7 @@ func (v FutureView) toggleDone(id string) tea.Cmd {
 				break
 			}
 		}
-		if err := v.store.SaveFutureList(list); err != nil {
-			return errMsg{err}
-		}
-		return v.loadMsg()
+		return v.saveFutureListMsg(list)
 	}
 }
 
@@ -545,10 +492,7 @@ func (v FutureView) deleteTask(id string) tea.Cmd {
 			}
 		}
 		list.Tasks = remaining
-		if err := v.store.SaveFutureList(list); err != nil {
-			return errMsg{err}
-		}
-		return v.loadMsg()
+		return v.saveFutureListMsg(list)
 	}
 }
 
@@ -607,6 +551,24 @@ func (v FutureView) submitLogForm() tea.Cmd {
 	}
 }
 
+// parseScheduleDate converts a keyword or YYYY-MM-DD string to a UTC day.
+// Empty string and "today" both resolve to today; unknown strings return today.
+func parseScheduleDate(raw string) time.Time {
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	switch strings.ToLower(raw) {
+	case "", scheduleToday:
+		return today
+	case scheduleTomorrow:
+		return today.AddDate(0, 0, 1)
+	default:
+		if parsed, err := time.Parse(model.DateFormat, raw); err == nil {
+			return parsed
+		}
+		return today
+	}
+}
+
 func (v FutureView) scheduleTask(taskID, rawDate string) tea.Cmd {
 	return func() tea.Msg {
 		list, err := v.store.GetFutureList()
@@ -628,21 +590,7 @@ func (v FutureView) scheduleTask(taskID, rawDate string) tea.Cmd {
 			return v.loadMsg()
 		}
 
-		// Parse date keyword or YYYY-MM-DD
-		day := time.Now()
-		switch strings.ToLower(rawDate) {
-		case "", "today":
-			d := time.Now()
-			day = time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, time.UTC)
-		case "tomorrow":
-			d := time.Now()
-			day = time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, time.UTC).AddDate(0, 0, 1)
-		default:
-			if parsed, err := time.Parse(model.DateFormat, rawDate); err == nil {
-				day = parsed
-			}
-		}
-
+		day := parseScheduleDate(rawDate)
 		list.Tasks = remaining
 		if err := v.store.SaveFutureList(list); err != nil {
 			return errMsg{err}
@@ -675,24 +623,13 @@ func (v FutureView) View(width, height int) string {
 	listContent := v.renderList(listWidth - 4)
 	detailContent := v.renderDetail(detailWidth - 4)
 
-	listStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("238")).
-		Width(listWidth).
-		Height(height-2).
-		Padding(0, 1)
-
-	detailStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("238")).
-		Width(detailWidth).
-		Height(height-2).
-		Padding(0, 1)
+	listStyle := sPaneInactive.Width(listWidth).Height(height - 2)
+	detailStyle := sPaneInactive.Width(detailWidth).Height(height - 2)
 
 	if v.pane == 0 {
-		listStyle = listStyle.BorderForeground(lipgloss.Color("63"))
+		listStyle = sPaneActive.Width(listWidth).Height(height - 2)
 	} else {
-		detailStyle = detailStyle.BorderForeground(lipgloss.Color("63"))
+		detailStyle = sPaneActive.Width(detailWidth).Height(height - 2)
 	}
 
 	return lipgloss.JoinHorizontal(lipgloss.Top,
@@ -765,112 +702,26 @@ func (v FutureView) renderDetail(width int) string {
 }
 
 func (v FutureView) renderTaskDetail(t model.Task, width int) string {
-	var lines []string
-	lines = append(lines, sTitle.Render(t.Title))
-	lines = append(lines, strings.Repeat("─", min(len(t.Title)+2, width)))
-	lines = append(lines, "")
-	if t.Context != "" {
-		lines = append(lines, fmt.Sprintf("Context:  %s", t.Context))
-	}
-	lines = append(lines, fmt.Sprintf("Status:   %s", t.Status))
-	lines = append(lines, fmt.Sprintf("Priority: %s", t.Priority))
-	if len(t.Labels) > 0 {
-		lines = append(lines, fmt.Sprintf("Labels:   %s", strings.Join(t.Labels, "  ")))
-	}
-
+	lines := renderTaskHeader(t, width)
 	if t.Notes != "" {
 		lines = append(lines, "", sTitle.Render("Notes:"), t.Notes)
 	}
-
-	linked := v.linkedActivities
-	if len(linked) > 0 {
-		totalMin := 0
-		for _, e := range linked {
-			totalMin += e.DurationMin
-		}
-		header := sTitle.Render("Activity:")
-		if totalMin > 0 {
-			total := fmt.Sprintf("%dh %02dm", totalMin/60, totalMin%60)
-			header += "  " + sCarried.Render("∑ "+total)
-		}
-		lines = append(lines, "", header)
-		for _, e := range linked {
-			dur := ""
-			if e.DurationMin > 0 {
-				dur = fmt.Sprintf(" %dm", e.DurationMin)
-			}
-			tags := ""
-			if len(e.Tags) > 0 {
-				tags = sMuted.Render(" [" + strings.Join(e.Tags, ", ") + "]")
-			}
-			lines = append(lines, fmt.Sprintf("  %s%s  %s%s",
-				sMuted.Render(e.Timestamp.Local().Format("Jan 02 15:04")),
-				sCarried.Render(dur),
-				e.Description,
-				tags,
-			))
-		}
-	}
-
+	lines = append(lines, renderLinkedActivities(v.linkedActivities)...)
 	lines = append(lines, "", sMuted.Render("ID: "+t.ID))
 	lines = append(lines, "", sMuted.Render("n notes  L log  d done  s schedule  e edit  D delete  tab ←list"))
 	return strings.Join(lines, "\n")
 }
 
 func (v FutureView) renderTaskFormDetail(t model.Task, width int) string {
-	fl := func(idx int, label string) string {
-		if v.tForm.focusIdx == idx {
-			return sTitle.Render("> " + label)
-		}
-		return sMuted.Render("  " + label)
-	}
-	return strings.Join([]string{
-		sTitle.Render("Edit task"),
-		sMuted.Render("ID: " + t.ID),
-		strings.Repeat("─", min(width, 36)),
-		"",
-		fl(0, "Title:    ") + " " + v.tForm.title.View(),
-		fl(1, "Context:  ") + " " + v.tForm.contextDisplay(v.tForm.focusIdx == 1),
-		fl(2, "Labels:   ") + " " + v.tForm.labels.View(),
-		fl(3, "Priority: ") + " " + v.tForm.priority.View(),
-		"",
-		sMuted.Render("  tab next  ←/→ context  ctrl+s save  esc cancel"),
-	}, "\n")
+	return renderTaskEditFormShared(v.tForm, t.ID, width)
 }
 
 func (v FutureView) renderNotesEditor(t model.Task, width int) string {
-	v.notesArea.SetWidth(width - 2)
-	v.notesArea.SetHeight(10)
-	return strings.Join([]string{
-		sTitle.Render("Notes: " + t.Title),
-		strings.Repeat("─", min(len(t.Title)+8, width)),
-		"",
-		v.notesArea.View(),
-		"",
-		sMuted.Render("ctrl+s save  esc cancel"),
-	}, "\n")
+	return renderNotesEditorShared(v.notesArea, t.Title, width)
 }
 
 func (v FutureView) renderLogForm(t model.Task, width int) string {
-	fieldLabel := func(idx int, label string) string {
-		if v.logForm.focusIdx == idx {
-			return sTitle.Render("> " + label)
-		}
-		return sMuted.Render("  " + label)
-	}
-	return strings.Join([]string{
-		sTitle.Render("Log activity"),
-		sMuted.Render("→ " + t.Title),
-		strings.Repeat("─", min(width, 36)),
-		"",
-		fieldLabel(0, "Description: ") + " " + v.logForm.desc.View(),
-		fieldLabel(1, "Tags:        ") + " " + v.logForm.tags.View(),
-		fieldLabel(2, "Minutes:     ") + " " + v.logForm.duration.View(),
-		fieldLabel(3, "Date:        ") + " " + v.logForm.dateInput.View(),
-		sMuted.Render("  Task ref:   " + v.logForm.taskID),
-		"",
-		sMuted.Render("tab next  ctrl+s save  esc cancel"),
-	}, "\n")
+	return renderLogFormShared(v.logForm, t.Title, width)
 }
 
 func (v FutureView) renderSchedulePrompt(t model.Task, width int) string {

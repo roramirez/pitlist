@@ -2,6 +2,7 @@ package views
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -392,5 +393,105 @@ func TestSearchViewWindowSizeMsg(t *testing.T) {
 	v = v2
 	if v.width != 80 || v.height != 24 {
 		t.Errorf("width/height not set: %dx%d", v.width, v.height)
+	}
+}
+
+func TestRenderTaskResult(t *testing.T) {
+	v := NewSearchView(nil)
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+
+	cases := []struct {
+		status    model.TaskStatus
+		wantCheck string
+	}{
+		{model.StatusTodo, "[ ]"},
+		{model.StatusDone, "[x]"},
+		{model.StatusInProgress, "[~]"},
+	}
+	for _, c := range cases {
+		task := &model.Task{Title: "T", Status: c.status}
+		r := SearchResult{Kind: SearchResultTask, Task: task, Date: date}
+		out := v.renderTaskResult(r)
+		if !strings.Contains(out, c.wantCheck) {
+			t.Errorf("status %v: want check %q in %q", c.status, c.wantCheck, out)
+		}
+	}
+}
+
+func TestRenderActivityResult(t *testing.T) {
+	v := NewSearchView(nil)
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	ts := date.Add(10 * time.Hour)
+
+	cases := []struct {
+		entry   model.ActivityEntry
+		wantSub string
+	}{
+		{
+			model.ActivityEntry{Timestamp: ts, Description: "Work", DurationMin: 30},
+			"30m",
+		},
+		{
+			model.ActivityEntry{Timestamp: ts, Description: "Work", Tags: []string{"tag1"}},
+			"tag1",
+		},
+		{
+			model.ActivityEntry{Timestamp: ts, Description: "Work", TaskRef: "t-001"},
+			"t-001",
+		},
+	}
+	for _, c := range cases {
+		e := c.entry
+		r := SearchResult{Kind: SearchResultActivity, Activity: &e, Date: date}
+		out := v.renderActivityResult(r)
+		if !strings.Contains(out, c.wantSub) {
+			t.Errorf("expected %q in renderActivityResult output %q", c.wantSub, out)
+		}
+	}
+}
+
+func TestSearchTaskResults(t *testing.T) {
+	store, _ := storage.NewYAMLStore(t.TempDir())
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	plan := &model.DayPlan{
+		Date: date,
+		Tasks: []model.Task{
+			{ID: "t-20260518-001", Title: "Auth refactor", Labels: []string{"auth"},
+				Status: model.StatusTodo, CreatedAt: date, UpdatedAt: date},
+		},
+	}
+	store.SaveDayPlan(plan)
+
+	results := searchTaskResults(store, "auth", false, "")
+	if len(results) == 0 {
+		t.Error("expected task results for 'auth'")
+	}
+	for _, r := range results {
+		if r.Kind != SearchResultTask {
+			t.Error("searchTaskResults should only return task results")
+		}
+	}
+}
+
+func TestSearchActivityResults(t *testing.T) {
+	store, _ := storage.NewYAMLStore(t.TempDir())
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	ts := date.Add(10 * time.Hour)
+	al := &model.ActivityLog{
+		Date: date,
+		Entries: []model.ActivityEntry{
+			{ID: "a-20260518-001", Timestamp: ts, Description: "Auth work", Tags: []string{"auth"}},
+		},
+	}
+	store.SaveActivityLog(al)
+
+	results := searchActivityResults(store, "auth", false, "")
+	if len(results) == 0 {
+		t.Error("expected activity results for 'auth'")
+	}
+	for _, r := range results {
+		if r.Kind != SearchResultActivity {
+			t.Error("searchActivityResults should only return activity results")
+		}
 	}
 }

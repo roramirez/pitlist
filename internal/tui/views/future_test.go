@@ -805,3 +805,33 @@ func TestFutureViewWithLinkedActivities(t *testing.T) {
 		t.Error("View with linked activities returned empty")
 	}
 }
+
+func TestFutureViewSaveFutureListMsg(t *testing.T) {
+	store := newFutureStore(t)
+	v := NewFutureView(store)
+	list := &model.FutureList{Tasks: []model.Task{
+		{ID: "f-001", Title: "Future", Status: model.StatusTodo},
+	}}
+	msg := v.saveFutureListMsg(list)
+	if _, ok := msg.(errMsg); ok {
+		t.Error("saveFutureListMsg returned errMsg on success")
+	}
+}
+
+func TestFutureViewHandleExistingFutureAction(t *testing.T) {
+	store := newFutureStore(t)
+	v := NewFutureView(store)
+	t0 := model.Task{ID: "f-001", Title: "Task", Status: model.StatusTodo}
+
+	// unknown key → no-op
+	_, cmd := v.handleExistingFutureAction(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}}, t0)
+	if cmd != nil {
+		t.Error("unknown key should return nil cmd")
+	}
+
+	// "d" → toggle done (returns non-nil cmd)
+	_, cmd = v.handleExistingFutureAction(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}}, t0)
+	if cmd == nil {
+		t.Error("'d' should return a cmd")
+	}
+}

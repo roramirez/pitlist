@@ -1421,3 +1421,36 @@ func TestMoveCursor_BackwardAtStart(t *testing.T) {
 		t.Error("expected nil cmd when clamped at start")
 	}
 }
+
+func TestTasksViewSavePlanMsg(t *testing.T) {
+	store, _ := storage.NewYAMLStore(t.TempDir())
+	date := time.Date(2026, 5, 26, 0, 0, 0, 0, time.UTC)
+	v := NewTasksView(store, date)
+	plan := &model.DayPlan{Date: date, Tasks: []model.Task{
+		{ID: "t-001", Title: "Test", Status: model.StatusTodo},
+	}}
+	msg := v.savePlanMsg(plan)
+	if _, ok := msg.(errMsg); ok {
+		t.Error("savePlanMsg returned errMsg on success")
+	}
+}
+
+func TestTasksViewHandleExistingTaskAction(t *testing.T) {
+	store, _ := storage.NewYAMLStore(t.TempDir())
+	date := time.Date(2026, 5, 26, 0, 0, 0, 0, time.UTC)
+	v := NewTasksView(store, date)
+	t0 := model.Task{ID: "t-001", Title: "Task", Status: model.StatusTodo}
+
+	// unknown key → no-op
+	v2, cmd := v.handleExistingTaskAction(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}}, t0)
+	if cmd != nil {
+		t.Error("unknown key should return nil cmd")
+	}
+	_ = v2
+
+	// "d" → toggle done (returns non-nil cmd)
+	_, cmd = v.handleExistingTaskAction(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}}, t0)
+	if cmd == nil {
+		t.Error("'d' should return a cmd")
+	}
+}

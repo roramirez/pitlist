@@ -7,7 +7,6 @@ import (
 	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/roramirez/pitlist/internal/model"
 	"github.com/roramirez/pitlist/internal/storage"
 )
@@ -119,84 +118,76 @@ func (v SearchView) updateResults(msg tea.KeyMsg) (SearchView, tea.Cmd) {
 
 func (v SearchView) search() tea.Cmd {
 	query := strings.TrimSpace(v.query)
+	store := v.store
 	return func() tea.Msg {
 		if query == "" {
 			return SearchResultsMsg{}
 		}
-
-		// #tag  → strict tag/label search only
-		// text  → search both text AND tags simultaneously
 		tagOnly := strings.HasPrefix(query, "#")
 		tag := strings.TrimPrefix(query, "#")
-
-		var results []SearchResult
-
-		// --- Tasks ---
-		taskFilter := storage.TaskFilter{
-			Statuses: []model.TaskStatus{model.StatusTodo, model.StatusInProgress, model.StatusDone},
-		}
-		if tagOnly {
-			taskFilter.Labels = []string{tag}
-		} else {
-			// search by text; also do a separate label pass below
-			taskFilter.Search = query
-		}
-		tasks, _ := v.store.ListTasks(taskFilter)
-		seen := map[string]bool{}
-		for _, t := range tasks {
-			tc := *t
-			date := dateFromID(t.ID)
-			results = append(results, SearchResult{Kind: SearchResultTask, Task: &tc, Date: date})
-			seen[t.ID] = true
-		}
-
-		// If free-text, also match by label and merge (dedup)
-		if !tagOnly {
-			labelFilter := storage.TaskFilter{
-				Statuses: taskFilter.Statuses,
-				Labels:   []string{query},
-			}
-			byLabel, _ := v.store.ListTasks(labelFilter)
-			for _, t := range byLabel {
-				if !seen[t.ID] {
-					tc := *t
-					date := dateFromID(t.ID)
-					results = append(results, SearchResult{Kind: SearchResultTask, Task: &tc, Date: date})
-				}
-			}
-		}
-
-		// --- Activities ---
-		actFilter := storage.ActivityFilter{}
-		if tagOnly {
-			actFilter.Tags = []string{tag}
-		} else {
-			actFilter.Search = query
-		}
-		entries, _ := v.store.ListActivity(actFilter)
-		seenAct := map[string]bool{}
-		for _, e := range entries {
-			ec := *e
-			date := time.Date(e.Timestamp.Year(), e.Timestamp.Month(), e.Timestamp.Day(), 0, 0, 0, 0, time.UTC)
-			results = append(results, SearchResult{Kind: SearchResultActivity, Activity: &ec, Date: date})
-			seenAct[e.ID] = true
-		}
-
-		// Also match activities by tag in free-text mode
-		if !tagOnly {
-			tagFilter := storage.ActivityFilter{Tags: []string{query}}
-			byTag, _ := v.store.ListActivity(tagFilter)
-			for _, e := range byTag {
-				if !seenAct[e.ID] {
-					ec := *e
-					date := time.Date(e.Timestamp.Year(), e.Timestamp.Month(), e.Timestamp.Day(), 0, 0, 0, 0, time.UTC)
-					results = append(results, SearchResult{Kind: SearchResultActivity, Activity: &ec, Date: date})
-				}
-			}
-		}
-
+		results := searchTaskResults(store, query, tagOnly, tag)
+		results = append(results, searchActivityResults(store, query, tagOnly, tag)...)
 		return SearchResultsMsg{Results: results}
 	}
+}
+
+// searchTaskResults queries tasks by text or tag and deduplicates label matches.
+func searchTaskResults(store *storage.YAMLStore, query string, tagOnly bool, tag string) []SearchResult {
+	statuses := []model.TaskStatus{model.StatusTodo, model.StatusInProgress, model.StatusDone}
+	f := storage.TaskFilter{Statuses: statuses}
+	if tagOnly {
+		f.Labels = []string{tag}
+	} else {
+		f.Search = query
+	}
+	tasks, _ := store.ListTasks(f)
+	seen := map[string]bool{}
+	var results []SearchResult
+	for _, t := range tasks {
+		tc := *t
+		results = append(results, SearchResult{Kind: SearchResultTask, Task: &tc, Date: dateFromID(t.ID)})
+		seen[t.ID] = true
+	}
+	if !tagOnly {
+		byLabel, _ := store.ListTasks(storage.TaskFilter{Statuses: statuses, Labels: []string{query}})
+		for _, t := range byLabel {
+			if !seen[t.ID] {
+				tc := *t
+				results = append(results, SearchResult{Kind: SearchResultTask, Task: &tc, Date: dateFromID(t.ID)})
+			}
+		}
+	}
+	return results
+}
+
+// searchActivityResults queries activity entries by text or tag and deduplicates.
+func searchActivityResults(store *storage.YAMLStore, query string, tagOnly bool, tag string) []SearchResult {
+	f := storage.ActivityFilter{}
+	if tagOnly {
+		f.Tags = []string{tag}
+	} else {
+		f.Search = query
+	}
+	entries, _ := store.ListActivity(f)
+	seen := map[string]bool{}
+	var results []SearchResult
+	for _, e := range entries {
+		ec := *e
+		date := time.Date(e.Timestamp.Year(), e.Timestamp.Month(), e.Timestamp.Day(), 0, 0, 0, 0, time.UTC)
+		results = append(results, SearchResult{Kind: SearchResultActivity, Activity: &ec, Date: date})
+		seen[e.ID] = true
+	}
+	if !tagOnly {
+		byTag, _ := store.ListActivity(storage.ActivityFilter{Tags: []string{query}})
+		for _, e := range byTag {
+			if !seen[e.ID] {
+				ec := *e
+				date := time.Date(e.Timestamp.Year(), e.Timestamp.Month(), e.Timestamp.Day(), 0, 0, 0, 0, time.UTC)
+				results = append(results, SearchResult{Kind: SearchResultActivity, Activity: &ec, Date: date})
+			}
+		}
+	}
+	return results
 }
 
 // dateFromID parses YYYY-MM-DD from t-YYYYMMDD-NNN or a-YYYYMMDD-NNN.
@@ -237,29 +228,7 @@ func (v SearchView) View(width, height int) string {
 	lines = append(lines, inputLine)
 	lines = append(lines, "")
 
-	if len(v.results) == 0 && strings.TrimSpace(v.query) != "" {
-		lines = append(lines, sMuted.Render("  No results."))
-	} else {
-		var prevKind SearchResultKind = -1
-		for i, r := range v.results {
-			selected := i == v.cursor && !v.inputFocused
-
-			if SearchResultKind(prevKind) != r.Kind {
-				if r.Kind == SearchResultTask {
-					lines = append(lines, sMuted.Render("  ── Tasks ──"))
-				} else {
-					lines = append(lines, sMuted.Render("  ── Activity ──"))
-				}
-				prevKind = r.Kind
-			}
-
-			line := v.renderResult(r)
-			if selected {
-				line = sSelected.Render(line)
-			}
-			lines = append(lines, line)
-		}
-	}
+	lines = append(lines, v.renderResultLines()...)
 
 	lines = append(lines, "")
 	if v.inputFocused {
@@ -269,35 +238,58 @@ func (v SearchView) View(width, height int) string {
 	}
 
 	content := strings.Join(lines, "\n")
-	return lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("63")).
-		Width(width-2).
-		Height(height-2).
-		Padding(0, 1).
-		Render(content)
+	return sPaneActive.Width(width - 2).Height(height - 2).Render(content)
+}
+
+func (v SearchView) renderResultLines() []string {
+	if len(v.results) == 0 && strings.TrimSpace(v.query) != "" {
+		return []string{sMuted.Render("  No results.")}
+	}
+	var prevKind SearchResultKind = -1
+	var lines []string
+	for i, r := range v.results {
+		if prevKind != r.Kind {
+			if r.Kind == SearchResultTask {
+				lines = append(lines, sMuted.Render("  ── Tasks ──"))
+			} else {
+				lines = append(lines, sMuted.Render("  ── Activity ──"))
+			}
+			prevKind = r.Kind
+		}
+		line := v.renderResult(r)
+		if i == v.cursor && !v.inputFocused {
+			line = sSelected.Render(line)
+		}
+		lines = append(lines, line)
+	}
+	return lines
 }
 
 func (v SearchView) renderResult(r SearchResult) string {
-	dateStr := sMuted.Render(r.Date.Format("Jan 02"))
-
 	if r.Kind == SearchResultTask {
-		check := "[ ]"
-		title := r.Task.Title
-		switch r.Task.Status {
-		case model.StatusDone:
-			check = "[x]"
-			title = sMuted.Render(title)
-		case model.StatusInProgress:
-			check = "[~]"
-		}
-		labels := ""
-		if len(r.Task.Labels) > 0 {
-			labels = "  " + sAccent.Render("["+strings.Join(r.Task.Labels, ", ")+"]")
-		}
-		return fmt.Sprintf("    %s %s%s  %s", check, title, labels, dateStr)
+		return v.renderTaskResult(r)
 	}
+	return v.renderActivityResult(r)
+}
 
+func (v SearchView) renderTaskResult(r SearchResult) string {
+	check := "[ ]"
+	title := r.Task.Title
+	switch r.Task.Status {
+	case model.StatusDone:
+		check = "[x]"
+		title = sMuted.Render(title)
+	case model.StatusInProgress:
+		check = "[~]"
+	}
+	labels := ""
+	if len(r.Task.Labels) > 0 {
+		labels = "  " + sAccent.Render("["+strings.Join(r.Task.Labels, ", ")+"]")
+	}
+	return fmt.Sprintf("    %s %s%s  %s", check, title, labels, sMuted.Render(r.Date.Format("Jan 02")))
+}
+
+func (v SearchView) renderActivityResult(r SearchResult) string {
 	dur := ""
 	if r.Activity.DurationMin > 0 {
 		dur = sCarried.Render(fmt.Sprintf(" %dm", r.Activity.DurationMin))
@@ -316,6 +308,6 @@ func (v SearchView) renderResult(r SearchResult) string {
 		r.Activity.Description,
 		tags,
 		ref,
-		dateStr,
+		sMuted.Render(r.Date.Format("Jan 02")),
 	)
 }

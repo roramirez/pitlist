@@ -260,3 +260,17 @@ func TestFilterViewLabelInputKeyForwarding(t *testing.T) {
 	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
 	v = v2
 }
+
+func TestToggleStatusFilterNonFocused(t *testing.T) {
+	v := NewFilterView()
+	_ = v.Activate()
+	// focusIdx = 0, pressing "1"/"2"/"3" should be no-op (not in status field)
+	v2 := v.toggleStatusFilter("1")
+	if v2.showTodo != v.showTodo {
+		t.Error("toggleStatusFilter should not change showTodo when focusIdx != 2")
+	}
+	v2 = v.toggleStatusFilter("3")
+	if v2.showDone != v.showDone {
+		t.Error("toggleStatusFilter should not change showDone when focusIdx != 2")
+	}
+}

@@ -55,49 +55,54 @@ func (v FilterView) Update(msg tea.Msg) (FilterView, tea.Cmd) {
 	}
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "esc":
-			v.active = false
-		case "enter":
-			v.active = false
-			return v, v.apply()
-		case "tab":
-			v.focusIdx = (v.focusIdx + 1) % 3
-			return v.focus()
-		case "1":
-			if v.focusIdx == 2 {
-				v.showTodo = !v.showTodo
-			}
-		case "2":
-			if v.focusIdx == 2 {
-				v.showProgress = !v.showProgress
-			}
-		case "3":
-			if v.focusIdx == 2 {
-				v.showDone = !v.showDone
-			}
-		default:
-			var cmd tea.Cmd
-			switch v.focusIdx {
-			case 0:
-				v.search, cmd = v.search.Update(msg)
-			case 1:
-				v.labelInput, cmd = v.labelInput.Update(msg)
-			}
-			return v, cmd
-		}
+		return v.handleKeyMsg(msg)
 	default:
-		// Forward blink and other internal messages to the active textinput
-		var cmd tea.Cmd
-		switch v.focusIdx {
-		case 0:
-			v.search, cmd = v.search.Update(msg)
-		case 1:
-			v.labelInput, cmd = v.labelInput.Update(msg)
-		}
-		return v, cmd
+		return v.updateActiveInput(msg)
+	}
+}
+
+func (v FilterView) handleKeyMsg(msg tea.KeyMsg) (FilterView, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		v.active = false
+	case "enter":
+		v.active = false
+		return v, v.apply()
+	case "tab":
+		v.focusIdx = (v.focusIdx + 1) % 3
+		return v.focus()
+	case "1", "2", "3":
+		v = v.toggleStatusFilter(msg.String())
+	default:
+		return v.updateActiveInput(msg)
 	}
 	return v, nil
+}
+
+func (v FilterView) toggleStatusFilter(key string) FilterView {
+	if v.focusIdx != 2 {
+		return v
+	}
+	switch key {
+	case "1":
+		v.showTodo = !v.showTodo
+	case "2":
+		v.showProgress = !v.showProgress
+	case "3":
+		v.showDone = !v.showDone
+	}
+	return v
+}
+
+func (v FilterView) updateActiveInput(msg tea.Msg) (FilterView, tea.Cmd) {
+	var cmd tea.Cmd
+	switch v.focusIdx {
+	case 0:
+		v.search, cmd = v.search.Update(msg)
+	case 1:
+		v.labelInput, cmd = v.labelInput.Update(msg)
+	}
+	return v, cmd
 }
 
 func (v FilterView) focus() (FilterView, tea.Cmd) {
