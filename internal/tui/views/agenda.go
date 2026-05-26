@@ -23,12 +23,13 @@ type agendaItem struct {
 }
 
 type AgendaView struct {
-	store  *storage.YAMLStore
-	items  []agendaItem // flattened list of (date, task) pairs
-	cursor int
-	width  int
-	height int
-	scroll int
+	store    *storage.YAMLStore
+	items    []agendaItem // flattened list of (date, task) pairs
+	cursor   int
+	width    int
+	height   int
+	scroll   int
+	showDone bool
 }
 
 func NewAgendaView(store *storage.YAMLStore) AgendaView {
@@ -61,7 +62,10 @@ func (v AgendaView) loadItems() tea.Msg {
 		}
 		for i := range plan.Tasks {
 			t := &plan.Tasks[i]
-			if t.Status == model.StatusDone || t.Status == model.StatusCancelled {
+			if t.Status == model.StatusCancelled {
+				continue
+			}
+			if t.Status == model.StatusDone && !v.showDone {
 				continue
 			}
 			dc := d
@@ -114,6 +118,9 @@ func (v AgendaView) handleKey(msg tea.KeyMsg) (AgendaView, tea.Cmd) {
 				return AgendaNavigateMsg{Date: v.items[v.cursor].date}
 			}
 		}
+	case "f":
+		v.showDone = !v.showDone
+		return v, v.Load()
 	case "r":
 		return v, v.Load()
 	}
@@ -139,7 +146,7 @@ func (v AgendaView) markDone(item agendaItem) tea.Cmd {
 			return errMsg{err}
 		}
 		// Reload after marking done
-		av := AgendaView{store: v.store}
+		av := AgendaView{store: v.store, showDone: v.showDone}
 		return av.loadItems()
 	}
 }
@@ -164,7 +171,11 @@ func (v AgendaView) View(width, height int) string {
 	today := agendaToday()
 
 	var lines []string
-	lines = append(lines, sTitle.Render("Agenda  — 7 days back · today · 7 days ahead"), "")
+	doneTag := ""
+	if v.showDone {
+		doneTag = sAccent.Render("  [+done]")
+	}
+	lines = append(lines, sTitle.Render("Agenda  — 7 days back · today · 7 days ahead")+doneTag, "")
 
 	if len(v.items) == 0 {
 		lines = append(lines, sMuted.Render("  Nothing pending. Clear agenda!"))
@@ -229,9 +240,18 @@ func (v AgendaView) renderDayHeader(d, today time.Time) string {
 }
 
 func renderAgendaTask(t *model.Task, selected bool) string {
-	check := "[ ]"
-	if t.Status == model.StatusInProgress {
+	var check string
+	var titleStyle lipgloss.Style
+	switch t.Status {
+	case model.StatusDone:
+		check = "[x]"
+		titleStyle = sDone
+	case model.StatusInProgress:
 		check = "[~]"
+		titleStyle = lipgloss.NewStyle()
+	default:
+		check = "[ ]"
+		titleStyle = lipgloss.NewStyle()
 	}
 
 	priority := ""
@@ -249,7 +269,7 @@ func renderAgendaTask(t *model.Task, selected bool) string {
 		labels = sAccent.Render(" [" + strings.Join(t.Labels, ", ") + "]")
 	}
 
-	line := fmt.Sprintf("    %s %s%s%s%s", check, t.Title, priority, carry, labels)
+	line := fmt.Sprintf("    %s %s%s%s%s", check, titleStyle.Render(t.Title), priority, carry, labels)
 	if selected {
 		line = sSelected.Render(line)
 	}

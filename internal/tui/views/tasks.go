@@ -356,6 +356,8 @@ func (v TasksView) updateNormal(msg tea.KeyMsg) (TasksView, tea.Cmd) {
 			v.logForm = newQuickLogForm(tasks[v.cursor].ID)
 			return v, textinput.Blink
 		}
+	case "f":
+		return v.toggleShowDone()
 	}
 	return v, nil
 }
@@ -1029,7 +1031,11 @@ func hasMultipleContexts(tasks []model.Task) bool {
 
 func (v TasksView) renderDayNav() string {
 	dateStr := v.date.Format("Mon Jan 02")
-	return fmt.Sprintf("%s %s %s", sMuted.Render("←"), sTitle.Render(dateStr), sMuted.Render("→"))
+	nav := fmt.Sprintf("%s %s %s", sMuted.Render("←"), sTitle.Render(dateStr), sMuted.Render("→"))
+	if v.showingDone() {
+		nav += "  " + sAccent.Render("[+done]")
+	}
+	return nav
 }
 
 func renderTaskLine(t model.Task, selected bool, width int) string {
@@ -1252,6 +1258,46 @@ func (v TasksView) renderLogForm(t model.Task, width int) string {
 
 func (v TasksView) Date() time.Time    { return v.date }
 func (v TasksView) Contexts() []string { return v.contexts }
+
+func (v TasksView) showingDone() bool {
+	for _, s := range v.filter.Statuses {
+		if s == model.StatusDone {
+			return true
+		}
+	}
+	return false
+}
+
+func (v TasksView) toggleShowDone() (TasksView, tea.Cmd) {
+	if v.showingDone() {
+		filtered := v.filter.Statuses[:0:0]
+		for _, s := range v.filter.Statuses {
+			if s != model.StatusDone {
+				filtered = append(filtered, s)
+			}
+		}
+		v.filter.Statuses = filtered
+	} else {
+		v.filter.Statuses = append(v.filter.Statuses, model.StatusDone)
+	}
+	v.cursor = 0
+	// Re-run global query if in global mode so statuses are reflected
+	if v.globalResults != nil {
+		return v, func() tea.Msg {
+			sf := storage.TaskFilter{
+				Labels:   v.filter.Labels,
+				Search:   v.filter.Search,
+				Statuses: v.filter.Statuses,
+			}
+			tasks, err := v.store.ListTasks(sf)
+			if err != nil {
+				return errMsg{err}
+			}
+			return GlobalTasksMsg{Tasks: tasks}
+		}
+	}
+	return v, nil
+}
 
 func (v TasksView) SetFilter(f TaskFilter) (TasksView, tea.Cmd) {
 	v.filter = f
