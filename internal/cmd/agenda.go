@@ -2,11 +2,21 @@ package cmd
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/roramirez/pitlist/internal/model"
 	"github.com/spf13/cobra"
+)
+
+const defaultAgendaDays = 7
+
+const (
+	agendaLabelToday    = "  (today)"
+	agendaLabelTomorrow = "  (tomorrow)"
+	agendaLabelOverdue  = "  (overdue)"
+	agendaSeparatorLen  = 40
 )
 
 func newAgendaCmd() *cobra.Command {
@@ -27,7 +37,7 @@ func newAgendaCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().IntVarP(&days, "days", "n", 7, "number of days to show (default 7)")
+	cmd.Flags().IntVarP(&days, "days", "n", defaultAgendaDays, "number of days to show")
 	cmd.Flags().StringArrayVarP(&labels, "label", "l", nil, "filter by label")
 	cmd.Flags().StringVar(&from, "from", "", "start date:"+dateFlag)
 	cmd.Flags().StringVar(&to, "to", "", "end date:"+dateFlag)
@@ -59,6 +69,23 @@ func resolveAgendaRange(from, to string, days int) (start, end time.Time, err er
 	return start, end, nil
 }
 
+func filterAgendaTasks(tasks []model.Task, labels []string, showDone bool) []model.Task {
+	var out []model.Task
+	for _, t := range tasks {
+		if t.Status == model.StatusCancelled {
+			continue
+		}
+		if t.Status == model.StatusDone && !showDone {
+			continue
+		}
+		if !matchLabels(t.Labels, labels) {
+			continue
+		}
+		out = append(out, t)
+	}
+	return out
+}
+
 func printAgenda(start, end time.Time, labels []string, showDone bool) error {
 	anyFound := false
 	for d := start; !d.After(end); d = d.AddDate(0, 0, 1) {
@@ -66,25 +93,10 @@ func printAgenda(start, end time.Time, labels []string, showDone bool) error {
 		if err != nil {
 			continue
 		}
-
-		var matched []model.Task
-		for _, t := range plan.Tasks {
-			if t.Status == model.StatusCancelled {
-				continue
-			}
-			if t.Status == model.StatusDone && !showDone {
-				continue
-			}
-			if !matchLabels(t.Labels, labels) {
-				continue
-			}
-			matched = append(matched, t)
-		}
-
+		matched := filterAgendaTasks(plan.Tasks, labels, showDone)
 		if len(matched) == 0 {
 			continue
 		}
-
 		anyFound = true
 		printDayHeader(d)
 		for i := range matched {
@@ -108,30 +120,21 @@ func printDayHeader(d time.Time) {
 	label := d.Format("Mon 2006-01-02")
 	switch {
 	case d.Equal(t):
-		label += "  (today)"
+		label += agendaLabelToday
 	case d.Equal(t.AddDate(0, 0, 1)):
-		label += "  (tomorrow)"
+		label += agendaLabelTomorrow
 	case d.Before(t):
-		label += "  (overdue)"
+		label += agendaLabelOverdue
 	}
-	fmt.Println(strings.Repeat("─", 40))
+	sep := strings.Repeat("─", agendaSeparatorLen)
+	fmt.Println(sep)
 	fmt.Printf("  %s\n", label)
-	fmt.Println(strings.Repeat("─", 40))
+	fmt.Println(sep)
 }
 
 func matchLabels(taskLabels, filterLabels []string) bool {
-	if len(filterLabels) == 0 {
-		return true
-	}
 	for _, want := range filterLabels {
-		found := false
-		for _, l := range taskLabels {
-			if l == want {
-				found = true
-				break
-			}
-		}
-		if !found {
+		if !slices.Contains(taskLabels, want) {
 			return false
 		}
 	}

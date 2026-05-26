@@ -1,0 +1,3 @@
+[score]
+exclude = [".worktrees/**"]
+fail_below = "B"
