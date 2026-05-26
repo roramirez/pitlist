@@ -18,6 +18,7 @@ const (
 	tabActivity
 	tabAgenda
 	tabSearch
+	tabFuture
 )
 
 type App struct {
@@ -27,6 +28,7 @@ type App struct {
 	activityView views.ActivityView
 	agendaView   views.AgendaView
 	searchView   views.SearchView
+	futureView   views.FutureView
 	filterView   views.FilterView
 	filterMode   bool
 	width        int
@@ -42,6 +44,7 @@ func NewApp(store *storage.YAMLStore, contexts ...string) App {
 		activityView: views.NewActivityView(store, now),
 		agendaView:   views.NewAgendaView(store),
 		searchView:   views.NewSearchView(store),
+		futureView:   views.NewFutureView(store, contexts...),
 		filterView:   views.NewFilterView(),
 	}
 }
@@ -51,6 +54,7 @@ func (a App) Init() tea.Cmd {
 		a.tasksView.Load(),
 		a.activityView.Load(),
 		a.agendaView.Load(),
+		a.futureView.Load(),
 	)
 }
 
@@ -113,6 +117,16 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		a.activityView, cmd = a.activityView.Update(msg)
 		return a, cmd
+
+	case views.FutureMsg:
+		var cmd tea.Cmd
+		a.futureView, cmd = a.futureView.Update(msg)
+		return a, cmd
+
+	case views.FutureLinkedActivitiesMsg:
+		var cmd tea.Cmd
+		a.futureView, cmd = a.futureView.Update(msg)
+		return a, cmd
 	}
 
 	// Route blink and other internal messages to filter when active
@@ -133,6 +147,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.agendaView, cmd = a.agendaView.Update(msg)
 	case tabSearch:
 		a.searchView, cmd = a.searchView.Update(msg)
+	case tabFuture:
+		a.futureView, cmd = a.futureView.Update(msg)
 	}
 	return a, cmd
 }
@@ -142,7 +158,8 @@ func (a App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// without intercepting tab-switch shortcuts.
 	inputActive := (a.activeTab == tabTasks && a.tasksView.IsInputActive()) ||
 		(a.activeTab == tabActivity && a.activityView.IsInputActive()) ||
-		(a.activeTab == tabSearch && a.searchView.IsInputActive())
+		(a.activeTab == tabSearch && a.searchView.IsInputActive()) ||
+		(a.activeTab == tabFuture && a.futureView.IsInputActive())
 
 	if !inputActive {
 		switch msg.String() {
@@ -161,6 +178,9 @@ func (a App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			a.activeTab = tabSearch
 			a.searchView = views.NewSearchView(a.store)
 			return a, nil
+		case "5":
+			a.activeTab = tabFuture
+			return a, a.futureView.Load()
 		case "/":
 			if a.activeTab == tabTasks {
 				a.filterMode = true
@@ -185,6 +205,8 @@ func (a App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.agendaView, cmd = a.agendaView.Update(msg)
 	case tabSearch:
 		a.searchView, cmd = a.searchView.Update(msg)
+	case tabFuture:
+		a.futureView, cmd = a.futureView.Update(msg)
 	}
 	return a, cmd
 }
@@ -226,6 +248,7 @@ func (a App) renderHeader() string {
 		tabStyle(tabActivity, "2 Activity"),
 		tabStyle(tabAgenda, "3 Agenda"),
 		tabStyle(tabSearch, "4 Search"),
+		tabStyle(tabFuture, "5 Future"),
 	)
 
 	date := lipgloss.NewStyle().
@@ -262,6 +285,8 @@ func (a App) renderBody() string {
 		return a.agendaView.View(a.width, bodyHeight)
 	case tabSearch:
 		return a.searchView.View(a.width, bodyHeight)
+	case tabFuture:
+		return a.futureView.View(a.width, bodyHeight)
 	}
 	return ""
 }
@@ -270,17 +295,19 @@ func (a App) renderStatusBar() string {
 	var hints string
 	switch a.activeTab {
 	case tabTasks:
-		hints = "a add  e edit  d done  c carry  n notes  L log activity  D delete  / filter  h/l day  tab detail  1/2/3/4 tabs  q quit"
+		hints = "a add  e edit  d done  c carry  n notes  L log activity  D delete  / filter  h/l day  tab detail  1-5 tabs  q quit"
 	case tabActivity:
-		hints = "a add  D delete  j/k navigate  h/l day  1/2/3/4 tabs  q quit"
+		hints = "a add  D delete  j/k navigate  h/l day  1-5 tabs  q quit"
 	case tabAgenda:
-		hints = "j/k navigate  d done  enter → Tasks  r refresh  1/2/3/4 tabs  q quit"
+		hints = "j/k navigate  d done  enter → Tasks  r refresh  1-5 tabs  q quit"
 	case tabSearch:
 		if a.searchView.IsInputActive() {
-			hints = "type to search  ↓/enter → navigate results  esc → stop typing  q quit  1/2/3/4 tabs"
+			hints = "type to search  ↓/enter → navigate results  esc → stop typing  q quit  1-5 tabs"
 		} else {
-			hints = "j/k navigate  enter → jump  i → edit search  q quit  1/2/3/4 tabs"
+			hints = "j/k navigate  enter → jump  i → edit search  q quit  1-5 tabs"
 		}
+	case tabFuture:
+		hints = "a add  e edit  d done  s schedule  n notes  L log  D delete  tab detail  1-5 tabs  q quit"
 	}
 	return lipgloss.NewStyle().
 		Foreground(lipgloss.Color("240")).

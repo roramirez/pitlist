@@ -1,0 +1,807 @@
+package views
+
+import (
+	"testing"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/roramirez/pitlist/internal/model"
+	"github.com/roramirez/pitlist/internal/storage"
+)
+
+func newFutureStore(t *testing.T) *storage.YAMLStore {
+	t.Helper()
+	s, err := storage.NewYAMLStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewYAMLStore: %v", err)
+	}
+	return s
+}
+
+func seedFutureTask(t *testing.T, s *storage.YAMLStore, tasks ...model.Task) {
+	t.Helper()
+	list := &model.FutureList{Tasks: tasks}
+	if err := s.SaveFutureList(list); err != nil {
+		t.Fatalf("SaveFutureList: %v", err)
+	}
+}
+
+func futureViewWithTask(t *testing.T) (FutureView, *storage.YAMLStore) {
+	t.Helper()
+	s := newFutureStore(t)
+	now := time.Now().UTC()
+	task := model.Task{ID: "f-20260525-001", Title: "My future task", Status: model.StatusTodo, CreatedAt: now, UpdatedAt: now}
+	seedFutureTask(t, s, task)
+
+	v := NewFutureView(s, "work", "personal")
+	list, _ := s.GetFutureList()
+	v2, _ := v.Update(FutureMsg{List: list})
+	return v2, s
+}
+
+// ── constructor & load ────────────────────────────────────────────────────────
+
+func TestNewFutureView(t *testing.T) {
+	s := newFutureStore(t)
+	v := NewFutureView(s, "work")
+	if v.IsInputActive() {
+		t.Error("IsInputActive should be false initially")
+	}
+	if v.list == nil {
+		t.Error("list should be initialized")
+	}
+}
+
+func TestFutureViewLoad(t *testing.T) {
+	s := newFutureStore(t)
+	v := NewFutureView(s)
+	cmd := v.Load()
+	if cmd == nil {
+		t.Fatal("Load should return a cmd")
+	}
+	msg := cmd()
+	if _, ok := msg.(FutureMsg); !ok {
+		t.Fatalf("expected FutureMsg, got %T", msg)
+	}
+}
+
+func TestFutureViewUpdateFutureMsg(t *testing.T) {
+	s := newFutureStore(t)
+	now := time.Now().UTC()
+	v := NewFutureView(s)
+
+	list := &model.FutureList{
+		Tasks: []model.Task{
+			{ID: "f-001", Title: "A", Status: model.StatusTodo, CreatedAt: now, UpdatedAt: now},
+			{ID: "f-002", Title: "B", Status: model.StatusTodo, CreatedAt: now, UpdatedAt: now},
+		},
+	}
+	v2, _ := v.Update(FutureMsg{List: list})
+	v = v2
+	if len(v.list.Tasks) != 2 {
+		t.Errorf("expected 2 tasks, got %d", len(v.list.Tasks))
+	}
+}
+
+func TestFutureViewUpdateWindowSize(t *testing.T) {
+	s := newFutureStore(t)
+	v := NewFutureView(s)
+
+	v2, _ := v.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	v = v2
+	if v.width != 120 || v.height != 40 {
+		t.Errorf("size not set: %dx%d", v.width, v.height)
+	}
+}
+
+func TestFutureViewFutureMsgCursorClamp(t *testing.T) {
+	s := newFutureStore(t)
+	now := time.Now().UTC()
+	v := NewFutureView(s)
+	v.cursor = 5
+
+	list := &model.FutureList{Tasks: []model.Task{
+		{ID: "f-001", Title: "Only one", Status: model.StatusTodo, CreatedAt: now, UpdatedAt: now},
+	}}
+	v2, _ := v.Update(FutureMsg{List: list})
+	v = v2
+	if v.cursor != 0 {
+		t.Errorf("cursor should clamp to 0, got %d", v.cursor)
+	}
+}
+
+func TestFutureViewLinkedActivitiesMsg(t *testing.T) {
+	s := newFutureStore(t)
+	v := NewFutureView(s)
+
+	ts := time.Now().UTC()
+	entries := []model.ActivityEntry{
+		{ID: "a-001", Timestamp: ts, Description: "Work on it"},
+	}
+	v2, _ := v.Update(FutureLinkedActivitiesMsg{Entries: entries})
+	v = v2
+	if len(v.linkedActivities) != 1 {
+		t.Errorf("expected 1 linked activity, got %d", len(v.linkedActivities))
+	}
+}
+
+// ── navigation ────────────────────────────────────────────────────────────────
+
+func TestFutureViewNavigateJK(t *testing.T) {
+	v, _ := futureViewWithTask(t)
+	s := newFutureStore(t)
+	now := time.Now().UTC()
+	seedFutureTask(t, s, model.Task{ID: "f-001", Title: "A", Status: model.StatusTodo, CreatedAt: now, UpdatedAt: now},
+		model.Task{ID: "f-002", Title: "B", Status: model.StatusTodo, CreatedAt: now, UpdatedAt: now})
+	v2 := NewFutureView(s)
+	list, _ := s.GetFutureList()
+	v2u, _ := v2.Update(FutureMsg{List: list})
+	v = v2u
+
+	v3, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	v = v3
+	if v.cursor != 1 {
+		t.Errorf("j: cursor=%d, want 1", v.cursor)
+	}
+
+	v3, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	v = v3
+	if v.cursor != 0 {
+		t.Errorf("k: cursor=%d, want 0", v.cursor)
+	}
+}
+
+func TestFutureViewNavigateBounds(t *testing.T) {
+	s := newFutureStore(t)
+	now := time.Now().UTC()
+	seedFutureTask(t, s, model.Task{ID: "f-001", Title: "Only", Status: model.StatusTodo, CreatedAt: now, UpdatedAt: now})
+	v := NewFutureView(s)
+	list, _ := s.GetFutureList()
+	vu, _ := v.Update(FutureMsg{List: list})
+	v = vu
+
+	// k at top → no change
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	v = v2
+	if v.cursor != 0 {
+		t.Errorf("k at top: cursor=%d, want 0", v.cursor)
+	}
+
+	// j at bottom → no change
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	v = v2
+	if v.cursor != 0 {
+		t.Errorf("j at bottom: cursor=%d, want 0", v.cursor)
+	}
+}
+
+func TestFutureViewPaneTab(t *testing.T) {
+	s := newFutureStore(t)
+	v := NewFutureView(s)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyTab})
+	v = v2
+	if v.pane != 1 {
+		t.Errorf("tab: pane=%d, want 1", v.pane)
+	}
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyTab})
+	v = v2
+	if v.pane != 0 {
+		t.Errorf("second tab: pane=%d, want 0", v.pane)
+	}
+}
+
+// ── add form ──────────────────────────────────────────────────────────────────
+
+func TestFutureViewOpenAddForm(t *testing.T) {
+	s := newFutureStore(t)
+	v := NewFutureView(s)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	v = v2
+	if !v.adding {
+		t.Error("'a' should open add form")
+	}
+	if !v.IsInputActive() {
+		t.Error("IsInputActive should be true when adding")
+	}
+
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	v = v2
+	if v.adding {
+		t.Error("esc should close add form")
+	}
+}
+
+func TestFutureViewAddFormSave(t *testing.T) {
+	s := newFutureStore(t)
+	v := NewFutureView(s, "work")
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	v = v2
+
+	for _, ch := range []rune{'S', 'o', 'm', 'e', 'd', 'a', 'y'} {
+		v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{ch}})
+		v = v2
+	}
+
+	v2, cmd := v.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	v = v2
+	if cmd == nil {
+		t.Fatal("ctrl+s with title should return a cmd")
+	}
+	if v.adding {
+		t.Error("adding should be false after save")
+	}
+	msg := cmd()
+	if _, ok := msg.(FutureMsg); !ok {
+		t.Fatalf("expected FutureMsg after add, got %T", msg)
+	}
+
+	list, _ := s.GetFutureList()
+	if len(list.Tasks) != 1 || list.Tasks[0].Title != "Someday" {
+		t.Errorf("task not saved: %v", list.Tasks)
+	}
+}
+
+func TestFutureViewAddFormEmptyCtrlS(t *testing.T) {
+	s := newFutureStore(t)
+	v := NewFutureView(s)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	v = v2
+
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	v = v2
+	if v.adding {
+		t.Error("empty title ctrl+s should close form")
+	}
+}
+
+func TestFutureViewAddFormTab(t *testing.T) {
+	s := newFutureStore(t)
+	v := NewFutureView(s, "work")
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	v = v2
+
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyTab})
+	v = v2
+	if v.tForm.focusIdx != 1 {
+		t.Errorf("tab: focusIdx=%d, want 1", v.tForm.focusIdx)
+	}
+
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	v = v2
+	if v.tForm.focusIdx != 0 {
+		t.Errorf("shift+tab: focusIdx=%d, want 0", v.tForm.focusIdx)
+	}
+}
+
+func TestFutureViewAddFormEnterLastField(t *testing.T) {
+	s := newFutureStore(t)
+	v := NewFutureView(s)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	v = v2
+
+	for _, ch := range []rune{'T', 'a', 's', 'k'} {
+		v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{ch}})
+		v = v2
+	}
+
+	for i := 0; i < taskFormFields-1; i++ {
+		v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyTab})
+		v = v2
+	}
+
+	v2, cmd := v.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	v = v2
+	_ = cmd
+	if v.adding {
+		t.Error("enter on last field should submit and close form")
+	}
+}
+
+// ── toggle done ───────────────────────────────────────────────────────────────
+
+func TestFutureViewToggleDone(t *testing.T) {
+	v, s := futureViewWithTask(t)
+
+	_, cmd := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	if cmd == nil {
+		t.Fatal("'d' should return a cmd")
+	}
+	msg := cmd()
+	if _, ok := msg.(FutureMsg); !ok {
+		t.Errorf("expected FutureMsg after toggle, got %T", msg)
+	}
+
+	list, _ := s.GetFutureList()
+	if list.Tasks[0].Status != model.StatusDone {
+		t.Errorf("expected StatusDone, got %q", list.Tasks[0].Status)
+	}
+}
+
+func TestFutureViewToggleDoneToTodo(t *testing.T) {
+	s := newFutureStore(t)
+	now := time.Now().UTC()
+	doneAt := now
+	seedFutureTask(t, s, model.Task{
+		ID: "f-001", Title: "Done", Status: model.StatusDone,
+		DoneAt: &doneAt, CreatedAt: now, UpdatedAt: now,
+	})
+	v := NewFutureView(s)
+	list, _ := s.GetFutureList()
+	vu, _ := v.Update(FutureMsg{List: list})
+	v = vu
+
+	_, cmd := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	msg := cmd()
+	if _, ok := msg.(FutureMsg); !ok {
+		t.Fatalf("expected FutureMsg, got %T", msg)
+	}
+	updated, _ := s.GetFutureList()
+	if updated.Tasks[0].Status != model.StatusTodo {
+		t.Errorf("expected StatusTodo after toggle, got %q", updated.Tasks[0].Status)
+	}
+}
+
+// ── delete ────────────────────────────────────────────────────────────────────
+
+func TestFutureViewDeleteTask(t *testing.T) {
+	v, s := futureViewWithTask(t)
+
+	_, cmd := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'D'}})
+	if cmd == nil {
+		t.Fatal("D should return a cmd")
+	}
+	msg := cmd()
+	if _, ok := msg.(FutureMsg); !ok {
+		t.Fatalf("expected FutureMsg after delete, got %T", msg)
+	}
+
+	list, _ := s.GetFutureList()
+	if len(list.Tasks) != 0 {
+		t.Errorf("task should be deleted, got %d tasks", len(list.Tasks))
+	}
+}
+
+// ── notes ─────────────────────────────────────────────────────────────────────
+
+func TestFutureViewNotesEsc(t *testing.T) {
+	v, _ := futureViewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	v = v2
+	if v.detailMode != futureDetailEditNotes {
+		t.Fatalf("expected futureDetailEditNotes, got %v", v.detailMode)
+	}
+	if !v.IsInputActive() {
+		t.Error("IsInputActive should be true in notes mode")
+	}
+
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	v = v2
+	if v.detailMode != futureDetailNormal {
+		t.Errorf("expected futureDetailNormal after esc, got %v", v.detailMode)
+	}
+}
+
+func TestFutureViewNotesSave(t *testing.T) {
+	v, _ := futureViewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	v = v2
+
+	_, cmd := v.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	if cmd == nil {
+		t.Fatal("ctrl+s in notes mode should return a cmd")
+	}
+	msg := cmd()
+	if _, ok := msg.(FutureMsg); !ok {
+		t.Fatalf("expected FutureMsg after notes save, got %T", msg)
+	}
+}
+
+func TestFutureViewNotesDefaultKey(t *testing.T) {
+	v, _ := futureViewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	v = v2
+
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	v = v2
+	if v.detailMode != futureDetailEditNotes {
+		t.Errorf("should stay in notes mode, got %v", v.detailMode)
+	}
+}
+
+// ── edit task form ────────────────────────────────────────────────────────────
+
+func TestFutureViewEditFormEsc(t *testing.T) {
+	v, _ := futureViewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	v = v2
+	if v.detailMode != futureDetailEditTask {
+		t.Fatalf("expected futureDetailEditTask, got %v", v.detailMode)
+	}
+
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	v = v2
+	if v.detailMode != futureDetailNormal {
+		t.Errorf("expected futureDetailNormal after esc")
+	}
+}
+
+func TestFutureViewEditFormSave(t *testing.T) {
+	v, s := futureViewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	v = v2
+
+	v2, cmd := v.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	v = v2
+	if cmd == nil {
+		t.Fatal("ctrl+s in edit form should return a cmd")
+	}
+	msg := cmd()
+	if _, ok := msg.(FutureMsg); !ok {
+		t.Fatalf("expected FutureMsg after edit save, got %T", msg)
+	}
+
+	list, _ := s.GetFutureList()
+	if len(list.Tasks) != 1 {
+		t.Errorf("expected 1 task after edit, got %d", len(list.Tasks))
+	}
+}
+
+func TestFutureViewEditFormTab(t *testing.T) {
+	v, _ := futureViewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	v = v2
+
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyTab})
+	v = v2
+	if v.tForm.focusIdx != 1 {
+		t.Errorf("tab: focusIdx=%d, want 1", v.tForm.focusIdx)
+	}
+}
+
+func TestFutureViewEditFormShiftTab(t *testing.T) {
+	v, _ := futureViewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	v = v2
+
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	v = v2
+	if v.tForm.focusIdx != taskFormFields-1 {
+		t.Errorf("shift+tab from 0: focusIdx=%d, want %d", v.tForm.focusIdx, taskFormFields-1)
+	}
+}
+
+func TestFutureViewEditFormEnterLastField(t *testing.T) {
+	v, _ := futureViewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	v = v2
+
+	for i := 0; i < taskFormFields-1; i++ {
+		v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyTab})
+		v = v2
+	}
+
+	v2, cmd := v.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	v = v2
+	if cmd == nil {
+		t.Fatal("enter on last edit field should return a cmd")
+	}
+	if _, ok := cmd().(FutureMsg); !ok {
+		t.Error("expected FutureMsg after edit enter on last field")
+	}
+}
+
+// ── log activity form ─────────────────────────────────────────────────────────
+
+func TestFutureViewLogFormEsc(t *testing.T) {
+	v, _ := futureViewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'L'}})
+	v = v2
+	if v.detailMode != futureDetailLogActivity {
+		t.Fatalf("expected futureDetailLogActivity, got %v", v.detailMode)
+	}
+
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	v = v2
+	if v.detailMode != futureDetailNormal {
+		t.Errorf("esc should close log form, got %v", v.detailMode)
+	}
+}
+
+func TestFutureViewLogFormTab(t *testing.T) {
+	v, _ := futureViewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'L'}})
+	v = v2
+
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyTab})
+	v = v2
+	if v.logForm.focusIdx != 1 {
+		t.Errorf("tab: focusIdx=%d, want 1", v.logForm.focusIdx)
+	}
+
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	v = v2
+	if v.logForm.focusIdx != 0 {
+		t.Errorf("shift+tab: focusIdx=%d, want 0", v.logForm.focusIdx)
+	}
+}
+
+func TestFutureViewLogFormSubmit(t *testing.T) {
+	v, _ := futureViewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'L'}})
+	v = v2
+
+	for _, ch := range []rune{'W', 'o', 'r', 'k'} {
+		v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{ch}})
+		v = v2
+	}
+
+	v2, cmd := v.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	v = v2
+	if cmd == nil {
+		t.Fatal("ctrl+s with description should return a cmd")
+	}
+	msg := cmd()
+	if _, ok := msg.(FutureMsg); !ok {
+		t.Fatalf("expected FutureMsg after log submit, got %T", msg)
+	}
+}
+
+func TestFutureViewLogFormEnterNonLastField(t *testing.T) {
+	v, _ := futureViewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'L'}})
+	v = v2
+
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	v = v2
+	if v.logForm.focusIdx != 1 {
+		t.Errorf("enter on field 0: expected focusIdx=1, got %d", v.logForm.focusIdx)
+	}
+}
+
+func TestFutureViewLogFormEnterLastField(t *testing.T) {
+	v, _ := futureViewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'L'}})
+	v = v2
+
+	for _, ch := range []rune{'W', 'o', 'r', 'k'} {
+		v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{ch}})
+		v = v2
+	}
+
+	for i := 0; i < quickLogFields-1; i++ {
+		v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyTab})
+		v = v2
+	}
+
+	v2, cmd := v.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	v = v2
+	_ = v
+	if cmd == nil {
+		t.Fatal("enter on last log field should return a cmd")
+	}
+}
+
+// ── schedule ──────────────────────────────────────────────────────────────────
+
+func TestFutureViewScheduleEsc(t *testing.T) {
+	v, _ := futureViewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	v = v2
+	if v.detailMode != futureDetailSchedule {
+		t.Fatalf("expected futureDetailSchedule, got %v", v.detailMode)
+	}
+	if !v.IsInputActive() {
+		t.Error("IsInputActive should be true in schedule mode")
+	}
+
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	v = v2
+	if v.detailMode != futureDetailNormal {
+		t.Errorf("esc should close schedule prompt, got %v", v.detailMode)
+	}
+}
+
+func TestFutureViewScheduleToday(t *testing.T) {
+	v, s := futureViewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	v = v2
+
+	v.scheduleInput.SetValue("today")
+	v2, cmd := v.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	v = v2
+	if cmd == nil {
+		t.Fatal("enter with date should return a cmd")
+	}
+	msg := cmd()
+	if _, ok := msg.(FutureMsg); !ok {
+		t.Fatalf("expected FutureMsg after schedule, got %T", msg)
+	}
+
+	// Task should be gone from future list
+	list, _ := s.GetFutureList()
+	if len(list.Tasks) != 0 {
+		t.Errorf("task should be removed from future list, got %d tasks", len(list.Tasks))
+	}
+}
+
+func TestFutureViewScheduleTomorrow(t *testing.T) {
+	v, s := futureViewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	v = v2
+
+	v.scheduleInput.SetValue("tomorrow")
+	v2, cmd := v.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	v = v2
+	msg := cmd()
+	if _, ok := msg.(FutureMsg); !ok {
+		t.Fatalf("expected FutureMsg, got %T", msg)
+	}
+
+	tomorrow := time.Now().AddDate(0, 0, 1)
+	day := time.Date(tomorrow.Year(), tomorrow.Month(), tomorrow.Day(), 0, 0, 0, 0, time.UTC)
+	plan, _ := s.GetDayPlan(day)
+	if len(plan.Tasks) != 1 {
+		t.Errorf("expected task on tomorrow's plan, got %d tasks", len(plan.Tasks))
+	}
+}
+
+func TestFutureViewScheduleExplicitDate(t *testing.T) {
+	v, s := futureViewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	v = v2
+
+	targetDate := time.Date(2027, 1, 15, 0, 0, 0, 0, time.UTC)
+	v.scheduleInput.SetValue("2027-01-15")
+	_, cmd := v.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	msg := cmd()
+	if _, ok := msg.(FutureMsg); !ok {
+		t.Fatalf("expected FutureMsg, got %T", msg)
+	}
+
+	plan, _ := s.GetDayPlan(targetDate)
+	if len(plan.Tasks) != 1 {
+		t.Errorf("expected task on 2027-01-15, got %d tasks", len(plan.Tasks))
+	}
+}
+
+func TestFutureViewScheduleCtrlS(t *testing.T) {
+	v, _ := futureViewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	v = v2
+
+	v.scheduleInput.SetValue("today")
+	v2, cmd := v.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	v = v2
+	if cmd == nil {
+		t.Fatal("ctrl+s should also submit the schedule prompt")
+	}
+}
+
+// ── view rendering ────────────────────────────────────────────────────────────
+
+func TestFutureViewEmpty(t *testing.T) {
+	s := newFutureStore(t)
+	v := NewFutureView(s)
+	out := v.View(120, 40)
+	if out == "" {
+		t.Error("View should return non-empty string even when empty")
+	}
+}
+
+func TestFutureViewWithTask(t *testing.T) {
+	v, _ := futureViewWithTask(t)
+	out := v.View(120, 40)
+	if out == "" {
+		t.Error("View with task returned empty")
+	}
+}
+
+func TestFutureViewWithAddForm(t *testing.T) {
+	s := newFutureStore(t)
+	v := NewFutureView(s)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	v = v2
+
+	out := v.View(120, 40)
+	if out == "" {
+		t.Error("View with add form returned empty")
+	}
+}
+
+func TestFutureViewWithNotesMode(t *testing.T) {
+	v, _ := futureViewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	v = v2
+
+	out := v.View(120, 40)
+	if out == "" {
+		t.Error("View in notes mode returned empty")
+	}
+}
+
+func TestFutureViewWithEditMode(t *testing.T) {
+	v, _ := futureViewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	v = v2
+
+	out := v.View(120, 40)
+	if out == "" {
+		t.Error("View in edit mode returned empty")
+	}
+}
+
+func TestFutureViewWithLogMode(t *testing.T) {
+	v, _ := futureViewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'L'}})
+	v = v2
+
+	out := v.View(120, 40)
+	if out == "" {
+		t.Error("View in log mode returned empty")
+	}
+}
+
+func TestFutureViewWithScheduleMode(t *testing.T) {
+	v, _ := futureViewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	v = v2
+
+	out := v.View(120, 40)
+	if out == "" {
+		t.Error("View in schedule mode returned empty")
+	}
+}
+
+func TestFutureViewDetailPaneNoTask(t *testing.T) {
+	s := newFutureStore(t)
+	v := NewFutureView(s)
+	v.pane = 1
+	out := v.View(120, 40)
+	if out == "" {
+		t.Error("View with empty list in detail pane returned empty")
+	}
+}
+
+func TestFutureViewWithLinkedActivities(t *testing.T) {
+	v, _ := futureViewWithTask(t)
+
+	ts := time.Now().UTC()
+	v2, _ := v.Update(FutureLinkedActivitiesMsg{Entries: []model.ActivityEntry{
+		{ID: "a-001", Timestamp: ts, Description: "Deep work", DurationMin: 60, Tags: []string{"focus"}},
+	}})
+	v = v2
+
+	out := v.View(120, 40)
+	if out == "" {
+		t.Error("View with linked activities returned empty")
+	}
+}

@@ -77,6 +77,7 @@ func NewRootCmd() *cobra.Command {
 		newSyncCmd(),
 		newStatsCmd(),
 		newDemoSeedCmd(),
+		newScheduleCmd(),
 	)
 
 	return root

@@ -653,6 +653,150 @@ func TestGetActivitiesByRefsSortsByTimestamp(t *testing.T) {
 	}
 }
 
+// ── FutureList ────────────────────────────────────────────────────────────────
+
+func TestFutureListRoundTrip(t *testing.T) {
+	s := newTestStore(t)
+	now := time.Now().UTC().Truncate(time.Second)
+
+	list := &model.FutureList{
+		Tasks: []model.Task{
+			{
+				ID:        "f-20260525-001",
+				Title:     "Someday task",
+				Status:    model.StatusTodo,
+				Priority:  model.PriorityHigh,
+				Labels:    []string{"research"},
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+		},
+	}
+
+	if err := s.SaveFutureList(list); err != nil {
+		t.Fatalf("SaveFutureList: %v", err)
+	}
+
+	got, err := s.GetFutureList()
+	if err != nil {
+		t.Fatalf("GetFutureList: %v", err)
+	}
+	if len(got.Tasks) != 1 {
+		t.Fatalf("expected 1 task, got %d", len(got.Tasks))
+	}
+	if got.Tasks[0].Title != "Someday task" {
+		t.Errorf("title mismatch: %q", got.Tasks[0].Title)
+	}
+	if got.Tasks[0].Priority != model.PriorityHigh {
+		t.Errorf("priority mismatch: %q", got.Tasks[0].Priority)
+	}
+}
+
+func TestGetFutureListMissing(t *testing.T) {
+	s := newTestStore(t)
+	list, err := s.GetFutureList()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(list.Tasks) != 0 {
+		t.Errorf("expected empty list, got %d tasks", len(list.Tasks))
+	}
+}
+
+func TestGetFutureTaskByID(t *testing.T) {
+	s := newTestStore(t)
+	now := time.Now().UTC()
+	list := &model.FutureList{
+		Tasks: []model.Task{
+			{ID: "f-20260525-001", Title: "Find me", Status: model.StatusTodo, CreatedAt: now, UpdatedAt: now},
+			{ID: "f-20260525-002", Title: "Not me", Status: model.StatusTodo, CreatedAt: now, UpdatedAt: now},
+		},
+	}
+	if err := s.SaveFutureList(list); err != nil {
+		t.Fatal(err)
+	}
+
+	task, err := s.GetFutureTaskByID("f-20260525-001")
+	if err != nil {
+		t.Fatalf("GetFutureTaskByID: %v", err)
+	}
+	if task.Title != "Find me" {
+		t.Errorf("unexpected title: %q", task.Title)
+	}
+}
+
+func TestGetFutureTaskByIDNotFound(t *testing.T) {
+	s := newTestStore(t)
+	_, err := s.GetFutureTaskByID("f-99999999-001")
+	if err == nil {
+		t.Error("expected error for missing future task")
+	}
+}
+
+func TestNextFutureTaskID(t *testing.T) {
+	list := &model.FutureList{Tasks: []model.Task{}}
+	id := NextFutureTaskID(list)
+	if len(id) == 0 || id[0] != 'f' {
+		t.Errorf("NextFutureTaskID should start with 'f', got %q", id)
+	}
+
+	list.Tasks = append(list.Tasks, model.Task{ID: id})
+	id2 := NextFutureTaskID(list)
+	if id2 == id {
+		t.Errorf("NextFutureTaskID should increment, got same id %q", id2)
+	}
+}
+
+func TestAddActivityRefToFutureTask(t *testing.T) {
+	s := newTestStore(t)
+	now := time.Now().UTC()
+	list := &model.FutureList{
+		Tasks: []model.Task{
+			{ID: "f-20260525-001", Title: "Task", Status: model.StatusTodo, CreatedAt: now, UpdatedAt: now},
+		},
+	}
+	if err := s.SaveFutureList(list); err != nil {
+		t.Fatal(err)
+	}
+
+	ref := model.ActivityRef{ID: "a-20260525-001", Date: "2026-05-25"}
+	if err := s.AddActivityRefToFutureTask("f-20260525-001", ref); err != nil {
+		t.Fatalf("AddActivityRefToFutureTask: %v", err)
+	}
+
+	task, err := s.GetFutureTaskByID("f-20260525-001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(task.ActivityRefs) != 1 || task.ActivityRefs[0].ID != "a-20260525-001" {
+		t.Errorf("expected activity ref, got %v", task.ActivityRefs)
+	}
+
+	// Idempotent
+	if err := s.AddActivityRefToFutureTask("f-20260525-001", ref); err != nil {
+		t.Fatal(err)
+	}
+	task, err = s.GetFutureTaskByID("f-20260525-001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(task.ActivityRefs) != 1 {
+		t.Errorf("expected 1 ref (idempotent), got %d", len(task.ActivityRefs))
+	}
+}
+
+func TestGetFutureListCorruptYAML(t *testing.T) {
+	s := newTestStore(t)
+	path := fmt.Sprintf("%s/future.yaml", s.dataDir)
+	if err := os.WriteFile(path, []byte("{{invalid yaml"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	_, err := s.GetFutureList()
+	if err == nil {
+		t.Error("expected error for corrupt future.yaml")
+	}
+}
+
 func TestContainsAll(t *testing.T) {
 	cases := []struct {
 		haystack []string

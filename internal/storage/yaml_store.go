@@ -339,10 +339,79 @@ func (s *YAMLStore) AddActivityRefToTask(taskID string, ref model.ActivityRef) e
 	return s.SaveDayPlan(plan)
 }
 
+// --- Future task methods ---
+
+func (s *YAMLStore) GetFutureList() (*model.FutureList, error) {
+	path := s.futurePath()
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return &model.FutureList{Tasks: []model.Task{}}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var list model.FutureList
+	if err := yaml.Unmarshal(data, &list); err != nil {
+		return nil, err
+	}
+	return &list, nil
+}
+
+func (s *YAMLStore) SaveFutureList(list *model.FutureList) error {
+	data, err := yaml.Marshal(list)
+	if err != nil {
+		return err
+	}
+	path := s.futurePath()
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return err
+	}
+	_ = s.git.autoCommit(path, "future: save backlog")
+	return nil
+}
+
+func (s *YAMLStore) GetFutureTaskByID(id string) (*model.Task, error) {
+	list, err := s.GetFutureList()
+	if err != nil {
+		return nil, err
+	}
+	for i := range list.Tasks {
+		if list.Tasks[i].ID == id {
+			t := list.Tasks[i]
+			return &t, nil
+		}
+	}
+	return nil, fmt.Errorf("future task %q not found", id)
+}
+
+func (s *YAMLStore) AddActivityRefToFutureTask(taskID string, ref model.ActivityRef) error {
+	list, err := s.GetFutureList()
+	if err != nil {
+		return err
+	}
+	for i := range list.Tasks {
+		if list.Tasks[i].ID == taskID {
+			for _, existing := range list.Tasks[i].ActivityRefs {
+				if existing.ID == ref.ID {
+					return nil
+				}
+			}
+			list.Tasks[i].ActivityRefs = append(list.Tasks[i].ActivityRefs, ref)
+			list.Tasks[i].UpdatedAt = time.Now().UTC()
+			break
+		}
+	}
+	return s.SaveFutureList(list)
+}
+
 // --- ID generation ---
 
 func NextTaskID(plan *model.DayPlan) string {
 	return fmt.Sprintf("t-%s-%03d", plan.Date.Format("20060102"), len(plan.Tasks)+1)
+}
+
+func NextFutureTaskID(list *model.FutureList) string {
+	return fmt.Sprintf("f-%s-%03d", time.Now().Format("20060102"), len(list.Tasks)+1)
 }
 
 func NextActivityID(log *model.ActivityLog) string {
@@ -365,4 +434,8 @@ func (s *YAMLStore) dayPath(date time.Time) string {
 
 func (s *YAMLStore) activityPath(date time.Time) string {
 	return filepath.Join(s.dataDir, "activity", date.Format(model.DateFormat)+".yaml")
+}
+
+func (s *YAMLStore) futurePath() string {
+	return filepath.Join(s.dataDir, "future.yaml")
 }
