@@ -38,6 +38,17 @@ func TestUpdateLogFormField(t *testing.T) {
 	_, _ = updateLogFormField(f3, msg)
 }
 
+func TestApplyTaskFormFocusContextField(t *testing.T) {
+	f := newTaskForm("", "title", "", nil, "", "medium")
+	f.focusIdx = 1
+
+	result, blink := applyTaskFormFocus(f)
+	_ = result
+	if blink {
+		t.Error("focusIdx=1 (context) should return blink=false")
+	}
+}
+
 func TestParseScheduleDate(t *testing.T) {
 	now := time.Now()
 	todayUTC := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)

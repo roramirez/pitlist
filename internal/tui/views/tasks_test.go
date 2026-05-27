@@ -1,6 +1,8 @@
 package views
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -1452,5 +1454,206 @@ func TestTasksViewHandleExistingTaskAction(t *testing.T) {
 	_, cmd = v.handleExistingTaskAction(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}}, t0)
 	if cmd == nil {
 		t.Error("'d' should return a cmd")
+	}
+}
+
+// ── savePlanMsg error branch ──────────────────────────────────────────────────
+
+func TestSavePlanMsgError(t *testing.T) {
+	dir := t.TempDir()
+	store, _ := storage.NewYAMLStore(dir)
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	v := NewTasksView(store, date)
+
+	daysDir := filepath.Join(dir, "days")
+	if err := os.Chmod(daysDir, 0o555); err != nil {
+		t.Fatalf("Chmod: %v", err)
+	}
+	t.Cleanup(func() { os.Chmod(daysDir, 0o755) })
+
+	plan := &model.DayPlan{Date: date}
+	msg := v.savePlanMsg(plan)
+	if _, ok := msg.(errMsg); !ok {
+		t.Fatalf("expected errMsg on write failure, got %T", msg)
+	}
+}
+
+// ── toggleShowDone ────────────────────────────────────────────────────────────
+
+func TestToggleShowDone(t *testing.T) {
+	store, _ := storage.NewYAMLStore(t.TempDir())
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	v := NewTasksView(store, date)
+
+	if v.showingDone() {
+		t.Fatal("showingDone should be false initially")
+	}
+
+	// 'f' toggles done tasks on
+	v2, cmd := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}})
+	v = v2
+	if !v.showingDone() {
+		t.Error("showingDone should be true after first 'f'")
+	}
+	if cmd != nil {
+		t.Error("cmd should be nil in non-global mode")
+	}
+
+	// 'f' again toggles done tasks off
+	v2, cmd = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}})
+	v = v2
+	if v.showingDone() {
+		t.Error("showingDone should be false after second 'f'")
+	}
+	if cmd != nil {
+		t.Error("cmd should be nil in non-global mode")
+	}
+}
+
+func TestToggleShowDoneGlobalMode(t *testing.T) {
+	store, _ := storage.NewYAMLStore(t.TempDir())
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	v := NewTasksView(store, date)
+
+	// Enter global mode by injecting a non-nil globalResults slice
+	v2, _ := v.Update(GlobalTasksMsg{Tasks: []*model.Task{}})
+	v = v2
+
+	_, cmd := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}})
+	if cmd == nil {
+		t.Error("cmd should be non-nil in global mode so statuses are refreshed")
+	}
+	msg := cmd()
+	if _, ok := msg.(GlobalTasksMsg); !ok {
+		t.Fatalf("expected GlobalTasksMsg, got %T", msg)
+	}
+}
+
+// ── carryTaskTo error branches ────────────────────────────────────────────────
+
+func TestCarryTaskToNotFound(t *testing.T) {
+	store, _ := storage.NewYAMLStore(t.TempDir())
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	v := NewTasksView(store, date)
+
+	cmd := v.carryTaskTo("no-such-id", date.AddDate(0, 0, 1))
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd")
+	}
+	msg := cmd()
+	if _, ok := msg.(errMsg); !ok {
+		t.Fatalf("expected errMsg for missing task, got %T", msg)
+	}
+}
+
+func TestCarryTaskToSaveSrcFails(t *testing.T) {
+	dir := t.TempDir()
+	store, _ := storage.NewYAMLStore(dir)
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	plan := &model.DayPlan{
+		Date: date,
+		Tasks: []model.Task{
+			{ID: "t-001", Title: "Task", Status: model.StatusTodo, CreatedAt: date, UpdatedAt: date},
+		},
+	}
+	store.SaveDayPlan(plan)
+
+	v := NewTasksView(store, date)
+	v2, _ := v.Update(TasksMsg{Plan: plan, ActLog: &model.ActivityLog{Date: date}})
+	v = v2
+
+	// make days/ unwritable so SaveDayPlan(srcPlan) fails
+	daysDir := filepath.Join(dir, "days")
+	if err := os.Chmod(daysDir, 0o555); err != nil {
+		t.Fatalf("Chmod: %v", err)
+	}
+	t.Cleanup(func() { os.Chmod(daysDir, 0o755) })
+
+	cmd := v.carryTaskTo("t-001", date.AddDate(0, 0, 1))
+	msg := cmd()
+	if _, ok := msg.(errMsg); !ok {
+		t.Fatalf("expected errMsg when save src fails, got %T", msg)
+	}
+}
+
+// ── loadMsg error branches ────────────────────────────────────────────────────
+
+func TestLoadMsgGetDayPlanError(t *testing.T) {
+	dir := t.TempDir()
+	store, _ := storage.NewYAMLStore(dir)
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+
+	dayFile := filepath.Join(dir, "days", date.Format("2006-01-02")+".yaml")
+	if err := os.WriteFile(dayFile, []byte(": bad: yaml: \x00"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	v := NewTasksView(store, date)
+	msg := v.loadMsg()
+	if _, ok := msg.(errMsg); !ok {
+		t.Fatalf("expected errMsg when GetDayPlan fails, got %T", msg)
+	}
+}
+
+func TestLoadMsgGetActivityLogError(t *testing.T) {
+	dir := t.TempDir()
+	store, _ := storage.NewYAMLStore(dir)
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+
+	actFile := filepath.Join(dir, "activity", date.Format("2006-01-02")+".yaml")
+	if err := os.WriteFile(actFile, []byte(": bad: yaml: \x00"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	v := NewTasksView(store, date)
+	msg := v.loadMsg()
+	if _, ok := msg.(errMsg); !ok {
+		t.Fatalf("expected errMsg when GetActivityLog fails, got %T", msg)
+	}
+}
+
+// ── navigateDay pane guard ────────────────────────────────────────────────────
+
+func TestNavigateDayDetailPane(t *testing.T) {
+	store, _ := storage.NewYAMLStore(t.TempDir())
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	v := NewTasksView(store, date)
+	v.pane = 1
+
+	v2, cmd := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
+	if !v2.date.Equal(date) {
+		t.Errorf("navigate should be a no-op in detail pane, date changed to %v", v2.date)
+	}
+	if cmd != nil {
+		t.Error("cmd should be nil when navigation is blocked by pane")
+	}
+}
+
+// ── handleTaskAction missing branches ────────────────────────────────────────
+
+func TestHandleTaskActionAddInDetailPane(t *testing.T) {
+	store, _ := storage.NewYAMLStore(t.TempDir())
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	v := NewTasksView(store, date)
+	v.pane = 1
+
+	v2, cmd := v.handleTaskAction(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}, nil)
+	if v2.adding {
+		t.Error("'a' in detail pane should not open add form")
+	}
+	if cmd != nil {
+		t.Error("cmd should be nil when 'a' pressed in detail pane")
+	}
+}
+
+func TestHandleTaskActionEmptyList(t *testing.T) {
+	store, _ := storage.NewYAMLStore(t.TempDir())
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	v := NewTasksView(store, date)
+
+	v2, cmd := v.handleTaskAction(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}}, nil)
+	_ = v2
+	if cmd != nil {
+		t.Error("cmd should be nil when task list is empty")
 	}
 }
