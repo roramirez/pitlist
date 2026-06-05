@@ -145,6 +145,7 @@ func (s *YAMLStore) ListTasks(filter TaskFilter) ([]*model.Task, error) {
 			t := &plan.Tasks[i]
 			if matchesTaskFilter(t, filter) {
 				tc := *t
+				tc.PlanDate = date
 				results = append(results, &tc)
 			}
 		}
@@ -154,6 +155,9 @@ func (s *YAMLStore) ListTasks(filter TaskFilter) ([]*model.Task, error) {
 		return nil, err
 	}
 	sort.Slice(results, func(i, j int) bool {
+		if !results[i].PlanDate.Equal(results[j].PlanDate) {
+			return results[i].PlanDate.Before(results[j].PlanDate)
+		}
 		return results[i].CreatedAt.Before(results[j].CreatedAt)
 	})
 	return results, nil

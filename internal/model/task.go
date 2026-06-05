@@ -43,6 +43,7 @@ type Task struct {
 	CarryFrom    string        `yaml:"carry_from,omitempty"`
 	CarryTo      string        `yaml:"carry_to,omitempty"`
 	ActivityRefs []ActivityRef `yaml:"activity_refs,omitempty"`
+	PlanDate     time.Time     `yaml:"-"` // populated by ListTasks; not persisted
 }
 
 type DayPlan struct {

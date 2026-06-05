@@ -56,7 +56,9 @@ func newListCmd() *cobra.Command {
 				return nil
 			}
 
+			var lastDay string
 			for _, t := range tasks {
+				printDayBreak(&lastDay, t.PlanDate)
 				printTask(t)
 			}
 			return nil

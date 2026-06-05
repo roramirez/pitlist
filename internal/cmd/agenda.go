@@ -15,7 +15,6 @@ const defaultAgendaDays = 7
 const (
 	agendaLabelToday    = "  (today)"
 	agendaLabelTomorrow = "  (tomorrow)"
-	agendaLabelOverdue  = "  (overdue)"
 	agendaSeparatorLen  = 40
 )
 
@@ -123,8 +122,6 @@ func printDayHeader(d time.Time) {
 		label += agendaLabelToday
 	case d.Equal(t.AddDate(0, 0, 1)):
 		label += agendaLabelTomorrow
-	case d.Before(t):
-		label += agendaLabelOverdue
 	}
 	sep := strings.Repeat("─", agendaSeparatorLen)
 	fmt.Println(sep)

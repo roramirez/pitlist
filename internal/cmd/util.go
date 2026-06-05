@@ -135,3 +135,16 @@ func parseDateRange(week bool, fromStr, toStr, dateStr string) (from, to time.Ti
 	d := today()
 	return d, d, nil
 }
+
+// printDayBreak emits a day header when d's date differs from *lastKey, then updates *lastKey.
+func printDayBreak(lastKey *string, d time.Time) {
+	key := d.Format(model.DateFormat)
+	if key == *lastKey {
+		return
+	}
+	if *lastKey != "" {
+		fmt.Println()
+	}
+	printDayHeader(d)
+	*lastKey = key
+}

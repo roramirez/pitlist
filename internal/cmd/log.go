@@ -123,7 +123,9 @@ func newLogListCmd() *cobra.Command {
 				return nil
 			}
 
+			var lastDay string
 			for _, e := range entries {
+				printDayBreak(&lastDay, e.Timestamp.Local().Truncate(24*time.Hour))
 				printActivityEntry(e)
 			}
 			return nil

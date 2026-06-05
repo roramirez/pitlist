@@ -285,6 +285,26 @@ func TestListCmdInvalidDate(t *testing.T) {
 	}
 }
 
+func TestListCmdMultiDayHeaders(t *testing.T) {
+	s := setupTest(t)
+	d1 := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	d2 := time.Date(2026, 6, 2, 0, 0, 0, 0, time.UTC)
+	seedTask(t, s, d1, model.Task{
+		ID: "t-20260601-001", Title: "Day one", Status: model.StatusTodo,
+		CreatedAt: d1, UpdatedAt: d1,
+	})
+	seedTask(t, s, d2, model.Task{
+		ID: "t-20260602-001", Title: "Day two", Status: model.StatusTodo,
+		CreatedAt: d2, UpdatedAt: d2,
+	})
+
+	cmd := newListCmd()
+	cmd.SetArgs([]string{"--from", "2026-06-01", "--to", "2026-06-02"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("list multi-day: %v", err)
+	}
+}
+
 // ── show ─────────────────────────────────────────────────────────────────────
 
 func TestShowCmd(t *testing.T) {
@@ -622,6 +642,30 @@ func TestLogListCmdInvalidDate(t *testing.T) {
 	cmd.SetArgs([]string{"--date", "bad"})
 	if err := cmd.Execute(); err == nil {
 		t.Error("expected error for invalid --date")
+	}
+}
+
+func TestLogListCmdMultiDayHeaders(t *testing.T) {
+	s := setupTest(t)
+	d1 := time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC)
+	d2 := time.Date(2026, 6, 2, 9, 0, 0, 0, time.UTC)
+	s.SaveActivityLog(&model.ActivityLog{
+		Date: d1,
+		Entries: []model.ActivityEntry{
+			{ID: "a-20260601-001", Timestamp: d1, Description: "Day one work"},
+		},
+	})
+	s.SaveActivityLog(&model.ActivityLog{
+		Date: d2,
+		Entries: []model.ActivityEntry{
+			{ID: "a-20260602-001", Timestamp: d2, Description: "Day two work"},
+		},
+	})
+
+	cmd := newLogListCmd()
+	cmd.SetArgs([]string{"--from", "2026-06-01", "--to", "2026-06-02"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("log list multi-day: %v", err)
 	}
 }
 
