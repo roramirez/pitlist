@@ -71,6 +71,87 @@ func TestParseDateNextKeywordsNeverToday(t *testing.T) {
 	}
 }
 
+func TestParseDateRange(t *testing.T) {
+	t0 := today()
+	mon := weekStart(t0)
+	fixedFrom := time.Date(2026, 6, 2, 0, 0, 0, 0, time.UTC)
+	fixedTo := time.Date(2026, 6, 5, 0, 0, 0, 0, time.UTC)
+
+	cases := []struct {
+		name     string
+		week     bool
+		fromStr  string
+		toStr    string
+		dateStr  string
+		wantFrom time.Time
+		wantTo   time.Time
+		wantErr  bool
+	}{
+		{
+			name:     "no flags defaults to today",
+			wantFrom: t0,
+			wantTo:   t0,
+		},
+		{
+			name:     "only --from defaults to to today",
+			fromStr:  "2026-06-02",
+			wantFrom: fixedFrom,
+			wantTo:   t0,
+		},
+		{
+			name:     "only --to defaults from to zero",
+			toStr:    "2026-06-05",
+			wantFrom: time.Time{},
+			wantTo:   fixedTo,
+		},
+		{
+			name:     "both --from and --to",
+			fromStr:  "2026-06-02",
+			toStr:    "2026-06-05",
+			wantFrom: fixedFrom,
+			wantTo:   fixedTo,
+		},
+		{
+			name:     "--week returns monday to sunday",
+			week:     true,
+			wantFrom: mon,
+			wantTo:   mon.AddDate(0, 0, 6),
+		},
+		{
+			name:     "--date returns single day range",
+			dateStr:  "2026-06-02",
+			wantFrom: fixedFrom,
+			wantTo:   fixedFrom,
+		},
+		{
+			name:    "invalid --from returns error",
+			fromStr: "not-a-date",
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			gotFrom, gotTo, err := parseDateRange(tc.week, tc.fromStr, tc.toStr, tc.dateStr)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !gotFrom.Equal(tc.wantFrom) {
+				t.Errorf("from: got %v, want %v", gotFrom, tc.wantFrom)
+			}
+			if !gotTo.Equal(tc.wantTo) {
+				t.Errorf("to: got %v, want %v", gotTo, tc.wantTo)
+			}
+		})
+	}
+}
+
 func TestThisOrNextWeekday_SameDay(t *testing.T) {
 	mon := time.Date(2026, 5, 25, 0, 0, 0, 0, time.UTC)
 	if got := thisOrNextWeekday(mon, time.Monday); !got.Equal(mon) {

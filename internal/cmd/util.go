@@ -124,6 +124,9 @@ func parseDateRange(week bool, fromStr, toStr, dateStr string) (from, to time.Ti
 		}
 	}
 	if fromStr != "" || toStr != "" {
+		if fromStr != "" && toStr == "" {
+			to = today()
+		}
 		return from, to, nil
 	}
 	if dateStr != "" {
