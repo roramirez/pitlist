@@ -1,6 +1,6 @@
 module github.com/roramirez/pitlist
 
-go 1.25
+go 1.25.11
 
 require (
 	github.com/charmbracelet/bubbles v1.0.0
