@@ -28,6 +28,7 @@ const (
 	detailLogActivity
 	detailCarry
 	detailEditTask
+	detailActions
 )
 
 const taskFormFields = 4 // title, context, labels, priority
@@ -148,6 +149,9 @@ type TasksView struct {
 	tForm            taskForm
 	carryInput       textinput.Model
 	carryTaskID      string
+	actionCursor     int
+	actionInput      textinput.Model
+	actionAdding     bool
 	width            int
 	height           int
 	filter           TaskFilter
@@ -171,15 +175,20 @@ func NewTasksView(store *storage.YAMLStore, date time.Time, contexts ...string) 
 	ci := textinput.New()
 	ci.CharLimit = 10
 
+	ai := textinput.New()
+	ai.Placeholder = "Action title…"
+	ai.CharLimit = 200
+
 	return TasksView{
-		store:      store,
-		date:       date,
-		plan:       &model.DayPlan{Date: date, Tasks: []model.Task{}},
-		input:      ti,
-		notesArea:  ta,
-		carryInput: ci,
-		contexts:   contexts,
-		filter:     TaskFilter{Statuses: []model.TaskStatus{model.StatusTodo, model.StatusInProgress}},
+		store:       store,
+		date:        date,
+		plan:        &model.DayPlan{Date: date, Tasks: []model.Task{}},
+		input:       ti,
+		notesArea:   ta,
+		carryInput:  ci,
+		actionInput: ai,
+		contexts:    contexts,
+		filter:      TaskFilter{Statuses: []model.TaskStatus{model.StatusTodo, model.StatusInProgress}},
 	}
 }
 
@@ -237,10 +246,10 @@ func (v TasksView) Update(msg tea.Msg) (TasksView, tea.Cmd) {
 	case TasksMsg:
 		v.plan = msg.Plan
 		v.actLog = msg.ActLog
-		if v.cursor >= len(v.filteredTasks()) {
-			v.cursor = max(0, len(v.filteredTasks())-1)
-		}
 		tasks := v.filteredTasks()
+		if v.cursor >= len(tasks) {
+			v.cursor = max(0, len(tasks)-1)
+		}
 		if len(tasks) > 0 {
 			return v, v.loadLinkedActivities(tasks[v.cursor].ID)
 		}
@@ -268,6 +277,8 @@ func (v TasksView) Update(msg tea.Msg) (TasksView, tea.Cmd) {
 			return v.updateCarry(msg)
 		case detailEditTask:
 			return v.updateTaskForm(msg)
+		case detailActions:
+			return v.updateActions(msg)
 		}
 		return v.updateNormal(msg)
 
@@ -345,6 +356,12 @@ func (v TasksView) handleExistingTaskAction(msg tea.KeyMsg, t model.Task) (Tasks
 		v.detailMode = detailLogActivity
 		v.logForm = newQuickLogForm(t.ID)
 		return v, textinput.Blink
+	case "A":
+		v.pane = 1
+		v.detailMode = detailActions
+		v.actionCursor = 0
+		v.actionAdding = false
+		return v, nil
 	}
 	return v, nil
 }
@@ -535,6 +552,68 @@ func (v TasksView) carryTaskTo(id string, destDate time.Time) tea.Cmd {
 			Date: srcDate.Format(model.DateFormat),
 		})
 		return v.loadMsg()
+	}
+}
+
+func (v TasksView) updateActions(msg tea.KeyMsg) (TasksView, tea.Cmd) {
+	tasks := v.filteredTasks()
+	if len(tasks) == 0 || v.cursor >= len(tasks) {
+		return v, nil
+	}
+	t := tasks[v.cursor]
+	res := handleActionEditorKey(v.actionCursor, v.actionAdding, v.actionInput, t.Actions, msg)
+	v.actionCursor, v.actionAdding, v.actionInput = res.cursor, res.adding, res.input
+	if res.exitMode {
+		v.detailMode = detailNormal
+		return v, nil
+	}
+	return v, v.actionCmd(t.ID, res)
+}
+
+func (v TasksView) actionCmd(taskID string, res actionEditorResult) tea.Cmd {
+	switch {
+	case res.blink:
+		return textinput.Blink
+	case res.toggleID != "":
+		return v.toggleAction(taskID, res.toggleID)
+	case res.deleteID != "":
+		return v.deleteAction(taskID, res.deleteID)
+	case res.newTitle != "":
+		return v.saveNewAction(taskID, res.newTitle)
+	}
+	return nil
+}
+
+func (v TasksView) saveNewAction(taskID, title string) tea.Cmd {
+	return func() tea.Msg {
+		plan, err := v.store.GetDayPlan(v.date)
+		if err != nil {
+			return errMsg{err}
+		}
+		plan.Tasks = applyActionAdd(plan.Tasks, taskID, title)
+		return v.savePlanMsg(plan)
+	}
+}
+
+func (v TasksView) toggleAction(taskID, actionID string) tea.Cmd {
+	return func() tea.Msg {
+		plan, err := v.store.GetDayPlan(v.date)
+		if err != nil {
+			return errMsg{err}
+		}
+		plan.Tasks = applyActionToggle(plan.Tasks, taskID, actionID)
+		return v.savePlanMsg(plan)
+	}
+}
+
+func (v TasksView) deleteAction(taskID, actionID string) tea.Cmd {
+	return func() tea.Msg {
+		plan, err := v.store.GetDayPlan(v.date)
+		if err != nil {
+			return errMsg{err}
+		}
+		plan.Tasks = applyActionDelete(plan.Tasks, taskID, actionID)
+		return v.savePlanMsg(plan)
 	}
 }
 
@@ -992,7 +1071,12 @@ func renderTaskLine(t model.Task, selected bool, width int) string {
 		hasNotes = sMuted.Render(" ¶")
 	}
 
-	line := fmt.Sprintf("  %s %s%s%s%s", check, titleStyle.Render(t.Title), priority, carryMark, hasNotes)
+	actBadge := ""
+	if len(t.Actions) > 0 {
+		actBadge = sMuted.Render(actionBadge(t.Actions))
+	}
+
+	line := fmt.Sprintf("  %s %s%s%s%s%s", check, titleStyle.Render(t.Title), priority, carryMark, hasNotes, actBadge)
 	if selected {
 		line = sSelected.Render(line)
 	}
@@ -1018,6 +1102,8 @@ func (v TasksView) renderDetail(width int) string {
 		return v.renderCarryPrompt(t, width)
 	case detailEditTask:
 		return v.renderTaskFormDetail(t, width)
+	case detailActions:
+		return v.renderActionsEditor(t, width)
 	default:
 		return v.renderTaskDetail(t, width)
 	}
@@ -1031,9 +1117,10 @@ func (v TasksView) renderTaskDetail(t model.Task, width int) string {
 	if t.Notes != "" {
 		lines = append(lines, "", sTitle.Render("Notes:"), t.Notes)
 	}
+	lines = append(lines, renderActionsDetailSection(t.Actions)...)
 	lines = append(lines, renderLinkedActivities(v.linkedActivities)...)
 	lines = append(lines, "", sMuted.Render("ID: "+t.ID))
-	lines = append(lines, "", sMuted.Render("n notes  L log activity  d done  c carry  tab ←list"))
+	lines = append(lines, "", sMuted.Render("n notes  L log  d done  c carry  A actions  tab ←list"))
 	return strings.Join(lines, "\n")
 }
 
@@ -1083,6 +1170,10 @@ func (v TasksView) renderNotesEditor(t model.Task, width int) string {
 
 func (v TasksView) renderLogForm(t model.Task, width int) string {
 	return renderLogFormShared(v.logForm, t.Title, width)
+}
+
+func (v TasksView) renderActionsEditor(t model.Task, width int) string {
+	return renderActionsShared(t.Actions, v.actionCursor, v.actionAdding, v.actionInput, width)
 }
 
 func (v TasksView) Date() time.Time    { return v.date }

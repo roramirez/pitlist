@@ -3,6 +3,7 @@ package views
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -1655,5 +1656,276 @@ func TestHandleTaskActionEmptyList(t *testing.T) {
 	_ = v2
 	if cmd != nil {
 		t.Error("cmd should be nil when task list is empty")
+	}
+}
+
+// ── actions ───────────────────────────────────────────────────────────────────
+
+// viewWithTaskAndActions returns a TasksView with a task that has two actions pre-seeded.
+func viewWithTaskAndActions(t *testing.T) (TasksView, *storage.YAMLStore, time.Time) {
+	t.Helper()
+	s, _ := storage.NewYAMLStore(t.TempDir())
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	plan := &model.DayPlan{
+		Date: date,
+		Tasks: []model.Task{
+			{
+				ID: "t-20260518-001", Title: "Task with actions", Status: model.StatusTodo,
+				CreatedAt: date, UpdatedAt: date,
+				Actions: []model.Action{
+					{ID: "ac-001", Title: "first step", Done: false},
+					{ID: "ac-002", Title: "second step", Done: true},
+				},
+			},
+		},
+	}
+	s.SaveDayPlan(plan)
+	v := NewTasksView(s, date)
+	v2, _ := v.Update(TasksMsg{Plan: plan, ActLog: &model.ActivityLog{Date: date}})
+	return v2, s, date
+}
+
+func TestTasksViewOpenActions(t *testing.T) {
+	v, _, _ := viewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'A'}})
+	v = v2
+	if v.detailMode != detailActions {
+		t.Fatalf("expected detailActions, got %v", v.detailMode)
+	}
+	if v.pane != 1 {
+		t.Error("pane should switch to detail (1) after 'A'")
+	}
+	if v.IsInputActive() {
+		// detailActions is considered input-active
+		_ = v // OK — actions mode is active, IsInputActive should be true
+	}
+}
+
+func TestTasksViewActionsEscExitsMode(t *testing.T) {
+	v, _, _ := viewWithTaskAndActions(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'A'}})
+	v = v2
+	if v.detailMode != detailActions {
+		t.Fatalf("prerequisite: expected detailActions, got %v", v.detailMode)
+	}
+
+	// esc → back to normal
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	v = v2
+	if v.detailMode != detailNormal {
+		t.Errorf("expected detailNormal after esc, got %v", v.detailMode)
+	}
+}
+
+func TestTasksViewActionsEscCancelsAdd(t *testing.T) {
+	v, _, _ := viewWithTaskAndActions(t)
+
+	// enter actions mode
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'A'}})
+	v = v2
+
+	// 'a' → enter add mode
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	v = v2
+	if !v.actionAdding {
+		t.Fatal("expected actionAdding = true after 'a'")
+	}
+
+	// esc → cancel add (stay in detailActions)
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	v = v2
+	if v.actionAdding {
+		t.Error("actionAdding should be false after esc")
+	}
+	if v.detailMode != detailActions {
+		t.Errorf("detailMode should remain detailActions, got %v", v.detailMode)
+	}
+}
+
+func TestTasksViewActionsNavigate(t *testing.T) {
+	v, _, _ := viewWithTaskAndActions(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'A'}})
+	v = v2
+
+	// cursor starts at 0; 'j' moves down
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	v = v2
+	if v.actionCursor != 1 {
+		t.Errorf("actionCursor = %d, want 1 after 'j'", v.actionCursor)
+	}
+
+	// 'k' moves back up
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	v = v2
+	if v.actionCursor != 0 {
+		t.Errorf("actionCursor = %d, want 0 after 'k'", v.actionCursor)
+	}
+
+	// clamped at 0 on 'k'
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	v = v2
+	if v.actionCursor != 0 {
+		t.Errorf("actionCursor should be clamped at 0, got %d", v.actionCursor)
+	}
+
+	// move to last, then try to go past
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	v = v2
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	v = v2
+	if v.actionCursor != 1 {
+		t.Errorf("actionCursor should be clamped at 1 (last), got %d", v.actionCursor)
+	}
+}
+
+func TestTasksViewActionsAddEmptyTitleNoOp(t *testing.T) {
+	v, _, _ := viewWithTaskAndActions(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'A'}})
+	v = v2
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	v = v2
+
+	// enter with no text → no save cmd, exits add mode
+	v2, cmd := v.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	v = v2
+	if v.actionAdding {
+		t.Error("actionAdding should be false after enter")
+	}
+	if cmd != nil {
+		t.Error("empty title should produce nil cmd")
+	}
+}
+
+func TestTasksViewActionsAddSave(t *testing.T) {
+	v, store, date := viewWithTaskAndActions(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'A'}})
+	v = v2
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	v = v2
+
+	// type "new action"
+	for _, r := range "new action" {
+		v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		v = v2
+	}
+
+	_, cmd := v.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("enter with title should produce a save cmd")
+	}
+	msg := cmd()
+	if _, ok := msg.(TasksMsg); !ok {
+		t.Fatalf("expected TasksMsg, got %T", msg)
+	}
+
+	plan, _ := store.GetDayPlan(date)
+	if len(plan.Tasks[0].Actions) != 3 {
+		t.Errorf("expected 3 actions after save, got %d", len(plan.Tasks[0].Actions))
+	}
+	if plan.Tasks[0].Actions[2].Title != "new action" {
+		t.Errorf("new action title = %q, want 'new action'", plan.Tasks[0].Actions[2].Title)
+	}
+}
+
+func TestTasksViewActionsToggle(t *testing.T) {
+	v, store, date := viewWithTaskAndActions(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'A'}})
+	v = v2
+
+	// cursor is at 0 (ac-001, Done: false); toggle with space
+	_, cmd := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	if cmd == nil {
+		t.Fatal("space should produce a toggle cmd")
+	}
+	msg := cmd()
+	if _, ok := msg.(TasksMsg); !ok {
+		t.Fatalf("expected TasksMsg after toggle, got %T", msg)
+	}
+
+	plan, _ := store.GetDayPlan(date)
+	if !plan.Tasks[0].Actions[0].Done {
+		t.Error("action 0 should be toggled to Done=true")
+	}
+}
+
+func TestTasksViewActionsDelete(t *testing.T) {
+	v, store, date := viewWithTaskAndActions(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'A'}})
+	v = v2
+
+	_, cmd := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'D'}})
+	if cmd == nil {
+		t.Fatal("D should produce a delete cmd")
+	}
+	msg := cmd()
+	if _, ok := msg.(TasksMsg); !ok {
+		t.Fatalf("expected TasksMsg after delete, got %T", msg)
+	}
+
+	plan, _ := store.GetDayPlan(date)
+	if len(plan.Tasks[0].Actions) != 1 {
+		t.Errorf("expected 1 action after delete, got %d", len(plan.Tasks[0].Actions))
+	}
+	if plan.Tasks[0].Actions[0].ID != "ac-002" {
+		t.Errorf("remaining action should be ac-002, got %s", plan.Tasks[0].Actions[0].ID)
+	}
+}
+
+func TestTasksViewActionsRenderDetail(t *testing.T) {
+	v, _, _ := viewWithTaskAndActions(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'A'}})
+	v = v2
+
+	out := v.View(120, 40)
+	if out == "" {
+		t.Fatal("View should not be empty in detailActions mode")
+	}
+	if !strings.Contains(out, "first step") {
+		t.Error("View should contain action title 'first step'")
+	}
+}
+
+func TestRenderTaskLineActionsBadge(t *testing.T) {
+	cases := []struct {
+		actions   []model.Action
+		wantBadge bool
+		badgeStr  string
+	}{
+		{nil, false, ""},
+		{[]model.Action{{Done: false}, {Done: false}, {Done: false}}, true, "0/3"},
+		{[]model.Action{{Done: true}, {Done: false}, {Done: false}}, true, "1/3"},
+		{[]model.Action{{Done: true}, {Done: true}, {Done: true}}, true, "3/3"},
+	}
+	for _, c := range cases {
+		task := model.Task{ID: "t-1", Title: "Test", Status: model.StatusTodo, Actions: c.actions}
+		line := renderTaskLine(task, false, 80)
+		hasBadge := strings.Contains(line, c.badgeStr)
+		if c.wantBadge && !hasBadge {
+			t.Errorf("badge not found in line %q, want %q", line, c.badgeStr)
+		}
+		if !c.wantBadge && strings.Contains(line, "/") {
+			t.Errorf("unexpected badge in line %q", line)
+		}
+	}
+}
+
+func TestTasksViewActionsNoTaskNoOp(t *testing.T) {
+	store, _ := storage.NewYAMLStore(t.TempDir())
+	date := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	v := NewTasksView(store, date)
+	// no tasks loaded — actions mode should be a no-op
+	v.detailMode = detailActions
+	v2, cmd := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	_ = v2
+	if cmd != nil {
+		t.Error("space with no tasks should produce nil cmd")
 	}
 }

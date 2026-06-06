@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Task actions** — attach a sub-task checklist to any task; press `A` in TUI (TasksView or FutureView) to add, toggle, or delete steps; `pitlist show` displays them as `[ ]`/`[x]` lines
 - **Future / Backlog tab** — new `5 Future` tab in the TUI for tasks without a date; supports add, edit, done, delete, notes, activity logging, and scheduling to a day (`s` key)
 - **`pitlist add --future`** — adds a task directly to the future backlog (no date required); task IDs are prefixed `f-`
 - **`pitlist schedule <id> [--date]`** — moves a future task to a specific day plan, assigning it a regular `t-` ID on arrival

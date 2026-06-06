@@ -39,6 +39,16 @@ func newShowCmd() *cobra.Command {
 			if task.CarryTo != "" {
 				fmt.Printf("Carried to:   %s\n", task.CarryTo)
 			}
+			if len(task.Actions) > 0 {
+				fmt.Println("Actions:")
+				for _, a := range task.Actions {
+					check := "[ ]"
+					if a.Done {
+						check = "[x]"
+					}
+					fmt.Printf("  %s %s\n", check, a.Title)
+				}
+			}
 			return nil
 		},
 	}
