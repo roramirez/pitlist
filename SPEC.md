@@ -20,6 +20,7 @@ A unit of work planned for a specific day. Tasks live in the day they were plann
 - Has a title, labels, priority, status, optional notes, optional due date
 - ID is date-prefixed: `t-YYYYMMDD-NNN` (human-readable, usable in CLI without copy-paste)
 - Carries `activity_refs` — a list of `{id, date}` pointers to linked activity entries (avoids full-scan lookups)
+- Carries `actions` — an optional ordered checklist of steps (`id`, `title`, `done`); omitted from YAML when empty
 
 **Status values:** `todo` | `in_progress` | `done` | `cancelled`
 
@@ -33,6 +34,14 @@ A record of something that was done. Can be linked to a task or standalone.
 - Timestamp is calculated as `now - duration` so the start time is recorded, not the end time
 - For past days: timestamp anchors to `end-of-day - duration`
 - ID is date-prefixed: `a-YYYYMMDD-NNN`
+
+### Future Task
+
+A task with no scheduled date. Stored in `future.yaml` at the root of `data_dir`.
+
+- ID: `f-YYYYMMDD-NNN` (date reflects creation time, not a plan date)
+- Appears in the **Future / Backlog** tab (`5`) in the TUI
+- Promoted to a regular day-plan task via `pitlist schedule` (or `s` in TUI): the entry is removed from `future.yaml` and added to the target day file with a new `t-` ID
 
 ### Carry
 
@@ -57,6 +66,7 @@ This preserves the full history — the YAML diffs show exactly when and why a t
 │   └── YYYY-MM-DD.yaml       # one file per day, tasks only
 ├── activity/
 │   └── YYYY-MM-DD.yaml       # one file per day, activity entries only
+├── future.yaml               # undated backlog tasks (FutureList)
 └── .git/                     # auto-initialized on first write
 ```
 
@@ -82,6 +92,13 @@ tasks:
         date: "2026-05-18"
       - id: "a-20260519-002"
         date: "2026-05-19"
+    actions:
+      - id: "ac-001"
+        title: "Research existing solutions"
+        done: true
+      - id: "ac-002"
+        title: "Write first draft"
+        done: false
 ```
 
 ### Activity log file (`activity/YYYY-MM-DD.yaml`)
@@ -114,6 +131,8 @@ IDs encode the date to make them human-readable and usable in CLI arguments:
 
 - Tasks: `t-YYYYMMDD-NNN` (e.g. `t-20260518-001`)
 - Activities: `a-YYYYMMDD-NNN` (e.g. `a-20260518-003`)
+- Future tasks: `f-YYYYMMDD-NNN` (date = creation date, not a plan date); on scheduling, the task is re-issued a `t-` ID in the target day file
+- Action steps: `ac-NNN` scoped within the parent task (e.g. `ac-001`, `ac-002`)
 
 `NNN` is a zero-padded sequence, derived by counting existing entries + 1.
 
@@ -155,7 +174,7 @@ All commands work without the TUI. The TUI launches when no subcommand is given.
 ### Tasks
 
 ```bash
-pitlist add "Title" [--context work] [--label work] [--priority high] [--due YYYY-MM-DD] [--date <date>]
+pitlist add "Title" [--context work] [--label work] [--priority high] [--due YYYY-MM-DD] [--date <date>] [--future]
 pitlist done <id>
 pitlist list                          # today, todo + in_progress
 pitlist list --label work             # all open work tasks across days
@@ -169,6 +188,14 @@ pitlist delete <id>                   # prompts confirmation
 pitlist delete <id> --force
 pitlist carry <id>                    # carries to tomorrow
 pitlist carry <id> --to <date>
+```
+
+### Future tasks
+
+```bash
+pitlist add "Title" --future           # add to backlog (no --date needed)
+pitlist schedule <f-id>                # move to today
+pitlist schedule <f-id> --date <date>  # move to a specific day
 ```
 
 ### Agenda
@@ -215,10 +242,11 @@ Launch with `pitlist` (no subcommand). Four tabs.
 | `2` | Activity tab |
 | `3` | Agenda tab |
 | `4` | Search tab |
+| `5` | Future tab |
 | `q` | Quit |
 | `ctrl+c` | Quit (always, even inside forms) |
 
-Tab-switch keys (`1`–`4`, `q`) are disabled when a form or input is active in the current tab.
+Tab-switch keys (`1`–`5`, `q`) are disabled when a form or input is active in the current tab.
 
 ---
 
@@ -240,7 +268,7 @@ Split view: left pane (task list) | right pane (task detail).
 | `w` | Toggle week view |
 | `/` | Open filter overlay (searches all days) |
 
-Tasks with notes show `¶` indicator. Carried tasks show `↑`.
+Tasks with notes show `¶` indicator. Carried tasks show `↑`. Tasks with actions show a `[done/total]` badge.
 
 **Right pane — task detail**
 
@@ -254,7 +282,21 @@ Activity section header shows total time: `Activity:  ∑ 1h 15m`
 | `L` | Log activity linked to this task |
 | `d` | Toggle done |
 | `c` | Carry (opens date prompt) |
+| `A` | Open actions editor |
 | `tab` | Switch focus back to list pane |
+
+**Actions editor (right pane when `A` is pressed)**
+
+```
+Actions  [1/2]
+──────────────────────────────────────
+  [x] Research existing solutions
+> [ ] Write first draft
+
+  j/k navigate  space toggle  a add  D delete  esc done
+```
+
+Press `a` to append a step inline, `space` to toggle done/undone, `D` to delete the selected step, `esc` to return to the normal detail view. Task completion is independent of action state.
 
 **Carry prompt (right pane)**
 
@@ -353,6 +395,51 @@ Full-text and tag search across all tasks and activity entries.
 Single-word queries without `#` search both text and tag/label simultaneously. `#tag` searches strictly by tag/label. Multi-word queries are text-only.
 
 Results are grouped: Tasks first, then Activity entries. Each result shows its date.
+
+---
+
+### Tab 5: Future / Backlog
+
+Tasks with no scheduled date. Survives across days until explicitly scheduled or deleted.
+
+Split view: left pane (task list) | right pane (task detail).
+
+**Left pane — task list**
+
+| Key | Action |
+|---|---|
+| `j` / `k` | Move cursor |
+| `a` | Add task to backlog (inline input) |
+| `d` | Toggle done / todo |
+| `D` | Delete task |
+| `tab` | Switch focus to detail pane |
+
+**Right pane — task detail**
+
+Same fields as Tasks tab detail pane (status, priority, labels, notes, linked activity, actions).
+
+| Key | Action |
+|---|---|
+| `e` | Edit task (title, context, labels, priority) |
+| `n` | Edit notes |
+| `L` | Log activity linked to this task |
+| `d` | Toggle done |
+| `s` | Schedule to a day (opens date prompt) |
+| `A` | Open actions editor |
+| `tab` | Switch focus back to list pane |
+
+**Schedule prompt (right pane when `s` is pressed)**
+
+```
+Schedule task to…
+→ Build the new parser
+────────────────────────────────────
+  Date: 2026-06-06█
+
+  enter confirm  esc cancel
+```
+
+Pre-filled with today. Accepts `YYYY-MM-DD` or any date keyword. On confirm, the future task is removed from `future.yaml` and added to the target day with a new `t-` ID.
 
 ---
 

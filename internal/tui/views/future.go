@@ -32,6 +32,7 @@ const (
 	futureDetailLogActivity
 	futureDetailEditTask
 	futureDetailSchedule
+	futureDetailActions
 )
 
 type FutureView struct {
@@ -48,6 +49,9 @@ type FutureView struct {
 	logForm          quickLogForm
 	scheduleInput    textinput.Model
 	scheduleTaskID   string
+	actionCursor     int
+	actionInput      textinput.Model
+	actionAdding     bool
 	width            int
 	height           int
 }
@@ -61,12 +65,17 @@ func NewFutureView(store *storage.YAMLStore, contexts ...string) FutureView {
 	si.Placeholder = "today, tomorrow, YYYY-MM-DD…"
 	si.CharLimit = 20
 
+	ai := textinput.New()
+	ai.Placeholder = "Action title…"
+	ai.CharLimit = 200
+
 	return FutureView{
 		store:         store,
 		list:          &model.FutureList{Tasks: []model.Task{}},
 		contexts:      contexts,
 		notesArea:     ta,
 		scheduleInput: si,
+		actionInput:   ai,
 	}
 }
 
@@ -113,11 +122,12 @@ func (v FutureView) Update(msg tea.Msg) (FutureView, tea.Cmd) {
 	switch msg := msg.(type) {
 	case FutureMsg:
 		v.list = msg.List
-		if v.cursor >= len(v.list.Tasks) {
-			v.cursor = max(0, len(v.list.Tasks)-1)
+		tasks := v.list.Tasks
+		if v.cursor >= len(tasks) {
+			v.cursor = max(0, len(tasks)-1)
 		}
-		if len(v.list.Tasks) > 0 {
-			return v, v.loadLinkedActivities(v.list.Tasks[v.cursor].ID)
+		if len(tasks) > 0 {
+			return v, v.loadLinkedActivities(tasks[v.cursor].ID)
 		}
 		return v, nil
 
@@ -138,6 +148,8 @@ func (v FutureView) Update(msg tea.Msg) (FutureView, tea.Cmd) {
 			return v.updateTaskForm(msg)
 		case futureDetailSchedule:
 			return v.updateSchedule(msg)
+		case futureDetailActions:
+			return v.updateActions(msg)
 		}
 		return v.updateNormal(msg)
 
@@ -209,6 +221,12 @@ func (v FutureView) handleExistingFutureAction(msg tea.KeyMsg, t model.Task) (Fu
 		return v, textinput.Blink
 	case "s":
 		return v.openSchedulePrompt(t.ID)
+	case "A":
+		v.pane = 1
+		v.detailMode = futureDetailActions
+		v.actionCursor = 0
+		v.actionAdding = false
+		return v, nil
 	}
 	return v, nil
 }
@@ -376,6 +394,68 @@ func (v FutureView) updateSchedule(msg tea.KeyMsg) (FutureView, tea.Cmd) {
 		return v, cmd
 	}
 	return v, nil
+}
+
+func (v FutureView) updateActions(msg tea.KeyMsg) (FutureView, tea.Cmd) {
+	tasks := v.list.Tasks
+	if len(tasks) == 0 || v.cursor >= len(tasks) {
+		return v, nil
+	}
+	t := tasks[v.cursor]
+	res := handleActionEditorKey(v.actionCursor, v.actionAdding, v.actionInput, t.Actions, msg)
+	v.actionCursor, v.actionAdding, v.actionInput = res.cursor, res.adding, res.input
+	if res.exitMode {
+		v.detailMode = futureDetailNormal
+		return v, nil
+	}
+	return v, v.actionCmd(t.ID, res)
+}
+
+func (v FutureView) actionCmd(taskID string, res actionEditorResult) tea.Cmd {
+	switch {
+	case res.blink:
+		return textinput.Blink
+	case res.toggleID != "":
+		return v.toggleAction(taskID, res.toggleID)
+	case res.deleteID != "":
+		return v.deleteAction(taskID, res.deleteID)
+	case res.newTitle != "":
+		return v.saveNewAction(taskID, res.newTitle)
+	}
+	return nil
+}
+
+func (v FutureView) saveNewAction(taskID, title string) tea.Cmd {
+	return func() tea.Msg {
+		list, err := v.store.GetFutureList()
+		if err != nil {
+			return errMsg{err}
+		}
+		list.Tasks = applyActionAdd(list.Tasks, taskID, title)
+		return v.saveFutureListMsg(list)
+	}
+}
+
+func (v FutureView) toggleAction(taskID, actionID string) tea.Cmd {
+	return func() tea.Msg {
+		list, err := v.store.GetFutureList()
+		if err != nil {
+			return errMsg{err}
+		}
+		list.Tasks = applyActionToggle(list.Tasks, taskID, actionID)
+		return v.saveFutureListMsg(list)
+	}
+}
+
+func (v FutureView) deleteAction(taskID, actionID string) tea.Cmd {
+	return func() tea.Msg {
+		list, err := v.store.GetFutureList()
+		if err != nil {
+			return errMsg{err}
+		}
+		list.Tasks = applyActionDelete(list.Tasks, taskID, actionID)
+		return v.saveFutureListMsg(list)
+	}
 }
 
 func (v FutureView) saveNewTask() tea.Cmd {
@@ -696,6 +776,8 @@ func (v FutureView) renderDetail(width int) string {
 		return v.renderTaskFormDetail(t, width)
 	case futureDetailSchedule:
 		return v.renderSchedulePrompt(t, width)
+	case futureDetailActions:
+		return v.renderActionsEditor(t, width)
 	default:
 		return v.renderTaskDetail(t, width)
 	}
@@ -706,10 +788,15 @@ func (v FutureView) renderTaskDetail(t model.Task, width int) string {
 	if t.Notes != "" {
 		lines = append(lines, "", sTitle.Render("Notes:"), t.Notes)
 	}
+	lines = append(lines, renderActionsDetailSection(t.Actions)...)
 	lines = append(lines, renderLinkedActivities(v.linkedActivities)...)
 	lines = append(lines, "", sMuted.Render("ID: "+t.ID))
-	lines = append(lines, "", sMuted.Render("n notes  L log  d done  s schedule  e edit  D delete  tab ←list"))
+	lines = append(lines, "", sMuted.Render("n notes  L log  d done  s schedule  A actions  tab ←list"))
 	return strings.Join(lines, "\n")
+}
+
+func (v FutureView) renderActionsEditor(t model.Task, width int) string {
+	return renderActionsShared(t.Actions, v.actionCursor, v.actionAdding, v.actionInput, width)
 }
 
 func (v FutureView) renderTaskFormDetail(t model.Task, width int) string {

@@ -28,6 +28,13 @@ type ActivityRef struct {
 	Date string `yaml:"date"` // YYYY-MM-DD
 }
 
+// Action is a single checklist step inside a Task.
+type Action struct {
+	ID    string `yaml:"id"`
+	Title string `yaml:"title"`
+	Done  bool   `yaml:"done"`
+}
+
 type Task struct {
 	ID           string        `yaml:"id"`
 	Title        string        `yaml:"title"`
@@ -43,6 +50,7 @@ type Task struct {
 	CarryFrom    string        `yaml:"carry_from,omitempty"`
 	CarryTo      string        `yaml:"carry_to,omitempty"`
 	ActivityRefs []ActivityRef `yaml:"activity_refs,omitempty"`
+	Actions      []Action      `yaml:"actions,omitempty"`
 }
 
 type DayPlan struct {

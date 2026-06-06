@@ -43,7 +43,7 @@ Data lives in `~/pitlist/` as plain YAML files (one per day). Every write auto-c
 
 ## TUI
 
-Launch with `pitlist` (no subcommand). Four tabs:
+Launch with `pitlist` (no subcommand). Five tabs:
 
 | Tab | Key | Purpose |
 |---|---|---|
@@ -51,6 +51,7 @@ Launch with `pitlist` (no subcommand). Four tabs:
 | Activity | `2` | Log what you did |
 | Agenda | `3` | Pending tasks across ±7 days |
 | Search | `4` | Full-text and `#tag` search across all history |
+| Future | `5` | Backlog tasks with no scheduled date |
 
 ### Tasks view
 
@@ -79,13 +80,14 @@ Launch with `pitlist` (no subcommand). Four tabs:
 | `c` | Carry to another day (prompts for date) |
 | `n` | Edit notes |
 | `L` | Log activity linked to this task |
+| `A` | Manage actions (sub-task checklist) |
 | `D` | Delete task |
 | `/` | Filter (searches all days) |
 | `w` | Toggle week view |
 
 ### Task detail pane
 
-Shows status, priority, context, labels, notes, and all linked activity entries with total time:
+Shows status, priority, context, labels, notes, linked activity entries with total time, and any actions checklist. Tasks with actions show a `[done/total]` badge next to their title in the list.
 
 ```
 Write RFC for auth
@@ -95,11 +97,26 @@ Status:   todo
 Priority: high
 Labels:   auth
 
+Actions  [1/2]
+  [x] Research existing solutions
+  [ ] Write first draft
+
 Activity:  ∑ 1h 15m
   May 18 14:30  45m  Deep dive into token bug  [debugging]
   May 19 09:00  30m  Drafted token rotation section  [auth]
 
-n notes  L log activity  d done  c carry
+n notes  L log activity  d done  c carry  A actions  tab ←list
+```
+
+Press `A` to open the actions editor — add, toggle, and delete checklist steps inline:
+
+```
+Actions  [1/2]
+──────────────────────────────────────
+  [x] Research existing solutions
+> [ ] Write first draft
+
+  j/k navigate  space toggle  a add  D delete  esc done
 ```
 
 ### Activity Log view
@@ -148,7 +165,7 @@ Type to search. Results update in real time.
 | `↓` / `enter` | Switch to navigate mode |
 | `esc` | Stop typing, switch to navigate mode |
 | `q` | Quit |
-| `1`–`4` | Switch tab |
+| `1`–`5` | Switch tab |
 
 **Navigate mode:**
 
@@ -158,7 +175,24 @@ Type to search. Results update in real time.
 | `enter` | Jump to result's day |
 | `i` / `esc` / `/` | Back to input |
 | `q` | Quit |
-| `1`–`4` | Switch tab |
+| `1`–`5` | Switch tab |
+
+### Future / Backlog view
+
+Tasks with no scheduled date live here until promoted to a specific day.
+
+| Key | Action |
+|---|---|
+| `j` / `k` | Move cursor |
+| `tab` | Switch to detail pane |
+| `a` | Add task to backlog |
+| `e` | Edit task (title, context, labels, priority) |
+| `d` | Toggle done |
+| `s` | Schedule to a day (prompts for date) |
+| `n` | Edit notes |
+| `L` | Log activity linked to this task |
+| `A` | Manage actions (sub-task checklist) |
+| `D` | Delete task |
 
 ---
 
@@ -183,6 +217,7 @@ Wherever a date is accepted (`--date`, `--from`, `--to`) you can use `YYYY-MM-DD
 ```bash
 pitlist add "Title" --context work --label auth --priority high --due 2026-05-20
 pitlist add "Title" --date friday     # plan for this Friday
+pitlist add "Title" --future          # add to backlog (no date); ID uses f- prefix
 pitlist done t-20260519-001
 pitlist list                          # today, open tasks
 pitlist list --label auth             # by label, all days
@@ -193,6 +228,8 @@ pitlist edit t-20260519-001           # opens $EDITOR
 pitlist carry t-20260519-001          # to tomorrow
 pitlist carry t-20260519-001 --to next_monday
 pitlist delete t-20260519-001
+pitlist schedule f-20260606-001       # move future task to today
+pitlist schedule f-20260606-001 --date next_monday
 ```
 
 ### Agenda
@@ -233,6 +270,7 @@ pitlist sync --push                   # also git push
 │   └── 2026-05-19.yaml
 ├── activity/
 │   └── 2026-05-19.yaml
+├── future.yaml
 └── .git/
 ```
 
@@ -249,6 +287,13 @@ pitlist sync --push                   # also git push
   activity_refs:
     - id: a-20260519-001
       date: "2026-05-19"
+  actions:
+    - id: ac-001
+      title: Research existing solutions
+      done: true
+    - id: ac-002
+      title: Write first draft
+      done: false
 ```
 
 **Activity entry:**

@@ -1,10 +1,13 @@
 package views
 
 import (
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/roramirez/pitlist/internal/model"
 )
 
 func TestUpdateLogFormField(t *testing.T) {
@@ -46,6 +49,94 @@ func TestApplyTaskFormFocusContextField(t *testing.T) {
 	_ = result
 	if blink {
 		t.Error("focusIdx=1 (context) should return blink=false")
+	}
+}
+
+func TestNextActionID(t *testing.T) {
+	cases := []struct {
+		actions []model.Action
+		want    string
+	}{
+		{nil, "ac-001"},
+		{[]model.Action{}, "ac-001"},
+		{[]model.Action{{ID: "ac-001"}}, "ac-002"},
+		{make([]model.Action, 9), "ac-010"},
+	}
+	for _, c := range cases {
+		got := nextActionID(c.actions)
+		if got != c.want {
+			t.Errorf("nextActionID(len=%d) = %q, want %q", len(c.actions), got, c.want)
+		}
+	}
+}
+
+func TestDoneCount(t *testing.T) {
+	cases := []struct {
+		actions []model.Action
+		want    int
+	}{
+		{nil, 0},
+		{[]model.Action{{Done: false}, {Done: false}}, 0},
+		{[]model.Action{{Done: true}, {Done: false}}, 1},
+		{[]model.Action{{Done: true}, {Done: true}}, 2},
+	}
+	for _, c := range cases {
+		got := doneCount(c.actions)
+		if got != c.want {
+			t.Errorf("doneCount(%v) = %d, want %d", c.actions, got, c.want)
+		}
+	}
+}
+
+func TestActionBadge(t *testing.T) {
+	if actionBadge(nil) != "" {
+		t.Error("actionBadge(nil) should be empty")
+	}
+	if actionBadge([]model.Action{}) != "" {
+		t.Error("actionBadge([]) should be empty")
+	}
+	actions := []model.Action{{Done: true}, {Done: false}, {Done: false}}
+	badge := actionBadge(actions)
+	if !strings.Contains(badge, "1/3") {
+		t.Errorf("actionBadge = %q, want to contain '1/3'", badge)
+	}
+}
+
+func TestRenderActionsShared(t *testing.T) {
+	actions := []model.Action{
+		{ID: "ac-001", Title: "step one", Done: true},
+		{ID: "ac-002", Title: "step two", Done: false},
+	}
+	input := textinput.New()
+
+	// Normal mode — not adding
+	out := renderActionsShared(actions, 0, false, input, 60)
+	if out == "" {
+		t.Fatal("renderActionsShared returned empty string")
+	}
+	if !strings.Contains(out, "step one") {
+		t.Error("output should contain action title 'step one'")
+	}
+	if !strings.Contains(out, "step two") {
+		t.Error("output should contain action title 'step two'")
+	}
+	if !strings.Contains(out, "[x]") {
+		t.Error("output should contain '[x]' for done action")
+	}
+	if !strings.Contains(out, "[ ]") {
+		t.Error("output should contain '[ ]' for pending action")
+	}
+
+	// Add mode — input row should appear
+	out2 := renderActionsShared(actions, 0, true, input, 60)
+	if !strings.Contains(out2, "+") {
+		t.Error("add mode output should include the input row marker '+'")
+	}
+
+	// Empty actions
+	out3 := renderActionsShared(nil, 0, false, input, 60)
+	if !strings.Contains(out3, "No actions yet") {
+		t.Error("empty actions should show 'No actions yet' message")
 	}
 }
 

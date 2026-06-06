@@ -3,6 +3,7 @@ package views
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -1071,5 +1072,219 @@ func TestUpdateScheduleTyping(t *testing.T) {
 	_ = cmd
 	if v.scheduleInput.Value() == "" {
 		t.Error("typing in schedule prompt should update the input value")
+	}
+}
+
+// ── actions ───────────────────────────────────────────────────────────────────
+
+func futureViewWithActions(t *testing.T) (FutureView, *storage.YAMLStore) {
+	t.Helper()
+	s := newFutureStore(t)
+	now := time.Now().UTC()
+	task := model.Task{
+		ID: "f-20260525-001", Title: "Future task with actions", Status: model.StatusTodo,
+		CreatedAt: now, UpdatedAt: now,
+		Actions: []model.Action{
+			{ID: "ac-001", Title: "future step one", Done: false},
+			{ID: "ac-002", Title: "future step two", Done: true},
+		},
+	}
+	seedFutureTask(t, s, task)
+	v := NewFutureView(s, "work", "personal")
+	list, _ := s.GetFutureList()
+	v2, _ := v.Update(FutureMsg{List: list})
+	return v2, s
+}
+
+func TestFutureViewOpenActions(t *testing.T) {
+	v, _ := futureViewWithActions(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'A'}})
+	v = v2
+	if v.detailMode != futureDetailActions {
+		t.Fatalf("expected futureDetailActions, got %v", v.detailMode)
+	}
+	if v.pane != 1 {
+		t.Error("pane should switch to 1 after 'A'")
+	}
+}
+
+func TestFutureViewActionsEscExitsMode(t *testing.T) {
+	v, _ := futureViewWithActions(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'A'}})
+	v = v2
+
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	v = v2
+	if v.detailMode != futureDetailNormal {
+		t.Errorf("expected futureDetailNormal after esc, got %v", v.detailMode)
+	}
+}
+
+func TestFutureViewActionsEscCancelsAdd(t *testing.T) {
+	v, _ := futureViewWithActions(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'A'}})
+	v = v2
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	v = v2
+	if !v.actionAdding {
+		t.Fatal("expected actionAdding = true after 'a'")
+	}
+
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	v = v2
+	if v.actionAdding {
+		t.Error("actionAdding should be false after esc")
+	}
+	if v.detailMode != futureDetailActions {
+		t.Errorf("detailMode should remain futureDetailActions, got %v", v.detailMode)
+	}
+}
+
+func TestFutureViewActionsNavigate(t *testing.T) {
+	v, _ := futureViewWithActions(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'A'}})
+	v = v2
+
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	v = v2
+	if v.actionCursor != 1 {
+		t.Errorf("actionCursor = %d, want 1", v.actionCursor)
+	}
+
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	v = v2
+	if v.actionCursor != 0 {
+		t.Errorf("actionCursor = %d, want 0", v.actionCursor)
+	}
+
+	// clamp at 0
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	v = v2
+	if v.actionCursor != 0 {
+		t.Errorf("cursor should be clamped at 0, got %d", v.actionCursor)
+	}
+}
+
+func TestFutureViewActionsAddEmptyNoOp(t *testing.T) {
+	v, _ := futureViewWithActions(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'A'}})
+	v = v2
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	v = v2
+
+	v2, cmd := v.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	v = v2
+	if v.actionAdding {
+		t.Error("actionAdding should be false after enter")
+	}
+	if cmd != nil {
+		t.Error("empty title should produce nil cmd")
+	}
+}
+
+func TestFutureViewActionsAddSave(t *testing.T) {
+	v, s := futureViewWithActions(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'A'}})
+	v = v2
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	v = v2
+
+	for _, r := range "third step" {
+		v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		v = v2
+	}
+
+	_, cmd := v.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("enter with title should produce a save cmd")
+	}
+	msg := cmd()
+	if _, ok := msg.(FutureMsg); !ok {
+		t.Fatalf("expected FutureMsg, got %T", msg)
+	}
+
+	list, _ := s.GetFutureList()
+	if len(list.Tasks[0].Actions) != 3 {
+		t.Errorf("expected 3 actions, got %d", len(list.Tasks[0].Actions))
+	}
+	if list.Tasks[0].Actions[2].Title != "third step" {
+		t.Errorf("new action title = %q, want 'third step'", list.Tasks[0].Actions[2].Title)
+	}
+}
+
+func TestFutureViewActionsToggle(t *testing.T) {
+	v, s := futureViewWithActions(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'A'}})
+	v = v2
+
+	_, cmd := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	if cmd == nil {
+		t.Fatal("space should produce a toggle cmd")
+	}
+	msg := cmd()
+	if _, ok := msg.(FutureMsg); !ok {
+		t.Fatalf("expected FutureMsg after toggle, got %T", msg)
+	}
+
+	list, _ := s.GetFutureList()
+	if !list.Tasks[0].Actions[0].Done {
+		t.Error("action 0 should be toggled to Done=true")
+	}
+}
+
+func TestFutureViewActionsDelete(t *testing.T) {
+	v, s := futureViewWithActions(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'A'}})
+	v = v2
+
+	_, cmd := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'D'}})
+	if cmd == nil {
+		t.Fatal("D should produce a delete cmd")
+	}
+	msg := cmd()
+	if _, ok := msg.(FutureMsg); !ok {
+		t.Fatalf("expected FutureMsg after delete, got %T", msg)
+	}
+
+	list, _ := s.GetFutureList()
+	if len(list.Tasks[0].Actions) != 1 {
+		t.Errorf("expected 1 action after delete, got %d", len(list.Tasks[0].Actions))
+	}
+	if list.Tasks[0].Actions[0].ID != "ac-002" {
+		t.Errorf("remaining action should be ac-002, got %s", list.Tasks[0].Actions[0].ID)
+	}
+}
+
+func TestFutureViewActionsRenderDetail(t *testing.T) {
+	v, _ := futureViewWithActions(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'A'}})
+	v = v2
+
+	out := v.View(120, 40)
+	if out == "" {
+		t.Fatal("View should not be empty in futureDetailActions mode")
+	}
+	if !strings.Contains(out, "future step one") {
+		t.Error("View should contain action title 'future step one'")
+	}
+}
+
+func TestFutureViewActionsNoTaskNoOp(t *testing.T) {
+	s := newFutureStore(t)
+	v := NewFutureView(s)
+	v.detailMode = futureDetailActions
+	v2, cmd := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	_ = v2
+	if cmd != nil {
+		t.Error("space with no tasks should produce nil cmd")
 	}
 }
