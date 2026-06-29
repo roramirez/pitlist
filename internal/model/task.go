@@ -53,6 +53,32 @@ type Task struct {
 	Actions      []Action      `yaml:"actions,omitempty"`
 }
 
+// CloneSkeleton returns a fresh, undone copy of the task: status reset to todo,
+// done/carry/activity metadata cleared, and every action copied with Done=false.
+// ID, CreatedAt and UpdatedAt are left zero for the caller to assign.
+func (t Task) CloneSkeleton() Task {
+	clone := t
+	clone.ID = ""
+	clone.Status = StatusTodo
+	clone.DoneAt = nil
+	clone.CarryFrom = ""
+	clone.CarryTo = ""
+	clone.ActivityRefs = nil
+	clone.CreatedAt = time.Time{}
+	clone.UpdatedAt = time.Time{}
+	clone.Labels = append([]string(nil), t.Labels...)
+	if len(t.Actions) == 0 {
+		clone.Actions = nil
+		return clone
+	}
+	clone.Actions = make([]Action, len(t.Actions))
+	for i, a := range t.Actions {
+		a.Done = false
+		clone.Actions[i] = a
+	}
+	return clone
+}
+
 type DayPlan struct {
 	Date  time.Time `yaml:"date"`
 	Tasks []Task    `yaml:"tasks"`

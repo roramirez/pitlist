@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Task clone** — clone a task (with its action checklist, reset to a not-done skeleton) onto another date; press `C` in the TUI tasks view or run `pitlist clone <id> [--to]`. The original stays in place and the clone gets a fresh `t-` ID
 - **Task actions** — attach a sub-task checklist to any task; press `A` in TUI (TasksView or FutureView) to add, toggle, or delete steps; `pitlist show` displays them as `[ ]`/`[x]` lines
 - **Future / Backlog tab** — new `5 Future` tab in the TUI for tasks without a date; supports add, edit, done, delete, notes, activity logging, and scheduling to a day (`s` key)
 - **`pitlist add --future`** — adds a task directly to the future backlog (no date required); task IDs are prefixed `f-`

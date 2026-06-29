@@ -54,6 +54,17 @@ Moving a task from one day to another. Carry:
 
 This preserves the full history — the YAML diffs show exactly when and why a task moved.
 
+### Clone
+
+Copying a task to another day as a fresh skeleton. Unlike carry, clone **does not** move or modify the original. Clone:
+
+1. Leaves the source task untouched
+2. Adds a copy to the destination day file with a **new `t-` ID** and fresh `created_at`/`updated_at`
+3. Resets the copy to a skeleton: `status: todo`, no `done_at`, empty `carry_from`/`carry_to`, no `activity_refs`
+4. Copies the action checklist but resets every action's `done` to `false`
+
+Use clone to repeat a recurring task (with its sub-task checklist) on another date.
+
 ---
 
 ## Storage
@@ -188,6 +199,8 @@ pitlist delete <id>                   # prompts confirmation
 pitlist delete <id> --force
 pitlist carry <id>                    # carries to tomorrow
 pitlist carry <id> --to <date>
+pitlist clone <id>                    # clones to tomorrow as a reset skeleton
+pitlist clone <id> --to <date>
 ```
 
 ### Future tasks
@@ -263,6 +276,7 @@ Split view: left pane (task list) | right pane (task detail).
 | `a` | Add task (inline input at top of list) |
 | `d` | Toggle done / todo |
 | `c` | Carry — opens date prompt in right pane |
+| `C` | Clone — opens date prompt; copies task (actions reset) to another day |
 | `D` | Delete task |
 | `tab` | Switch focus to detail pane |
 | `w` | Toggle week view |
@@ -282,6 +296,7 @@ Activity section header shows total time: `Activity:  ∑ 1h 15m`
 | `L` | Log activity linked to this task |
 | `d` | Toggle done |
 | `c` | Carry (opens date prompt) |
+| `C` | Clone to another day (opens date prompt) |
 | `A` | Open actions editor |
 | `tab` | Switch focus back to list pane |
 

@@ -862,3 +862,55 @@ func TestWalkActivityFilesDateFilter(t *testing.T) {
 		t.Errorf("expected [%v], got %v", d2, visited)
 	}
 }
+
+func TestCloneTaskToDate(t *testing.T) {
+	s := newTestStore(t)
+	srcDate := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	destDate := time.Date(2026, 5, 20, 0, 0, 0, 0, time.UTC)
+	done := srcDate
+
+	src := &model.Task{
+		ID: "t-20260518-001", Title: "Clone me", Status: model.StatusDone,
+		DoneAt: &done, CreatedAt: srcDate, UpdatedAt: srcDate,
+		Actions: []model.Action{
+			{ID: "ac-001", Title: "step", Done: true},
+		},
+	}
+	srcPlan := &model.DayPlan{Date: srcDate, Tasks: []model.Task{*src}}
+	if err := s.SaveDayPlan(srcPlan); err != nil {
+		t.Fatalf("SaveDayPlan src: %v", err)
+	}
+
+	clone, err := s.CloneTaskToDate(src, destDate)
+	if err != nil {
+		t.Fatalf("CloneTaskToDate: %v", err)
+	}
+
+	if clone.ID == "" || clone.ID == src.ID {
+		t.Errorf("clone should have a fresh ID, got %q", clone.ID)
+	}
+	if clone.ID[0] != 't' {
+		t.Errorf("clone ID should start with 't', got %q", clone.ID)
+	}
+	if clone.Status != model.StatusTodo {
+		t.Errorf("clone status = %q, want todo", clone.Status)
+	}
+	if clone.CreatedAt.IsZero() || clone.UpdatedAt.IsZero() {
+		t.Error("clone timestamps should be set")
+	}
+	if len(clone.Actions) != 1 || clone.Actions[0].Done {
+		t.Errorf("clone action should be reset, got %v", clone.Actions)
+	}
+
+	// Persisted on dest day.
+	destPlan, _ := s.GetDayPlan(destDate)
+	if len(destPlan.Tasks) != 1 || destPlan.Tasks[0].ID != clone.ID {
+		t.Errorf("clone not persisted on dest day, got %v", destPlan.Tasks)
+	}
+
+	// Source day untouched.
+	got, _ := s.GetDayPlan(srcDate)
+	if len(got.Tasks) != 1 || got.Tasks[0].ID != src.ID {
+		t.Errorf("source day should be unchanged, got %v", got.Tasks)
+	}
+}

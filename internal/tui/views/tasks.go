@@ -27,6 +27,7 @@ const (
 	detailEditNotes
 	detailLogActivity
 	detailCarry
+	detailClone
 	detailEditTask
 	detailActions
 )
@@ -149,6 +150,8 @@ type TasksView struct {
 	tForm            taskForm
 	carryInput       textinput.Model
 	carryTaskID      string
+	cloneInput       textinput.Model
+	cloneTaskID      string
 	actionCursor     int
 	actionInput      textinput.Model
 	actionAdding     bool
@@ -175,6 +178,9 @@ func NewTasksView(store *storage.YAMLStore, date time.Time, contexts ...string) 
 	ci := textinput.New()
 	ci.CharLimit = 10
 
+	cl := textinput.New()
+	cl.CharLimit = 10
+
 	ai := textinput.New()
 	ai.Placeholder = "Action title…"
 	ai.CharLimit = 200
@@ -186,6 +192,7 @@ func NewTasksView(store *storage.YAMLStore, date time.Time, contexts ...string) 
 		input:       ti,
 		notesArea:   ta,
 		carryInput:  ci,
+		cloneInput:  cl,
 		actionInput: ai,
 		contexts:    contexts,
 		filter:      TaskFilter{Statuses: []model.TaskStatus{model.StatusTodo, model.StatusInProgress}},
@@ -275,6 +282,8 @@ func (v TasksView) Update(msg tea.Msg) (TasksView, tea.Cmd) {
 			return v.updateLogForm(msg)
 		case detailCarry:
 			return v.updateCarry(msg)
+		case detailClone:
+			return v.updateClone(msg)
 		case detailEditTask:
 			return v.updateTaskForm(msg)
 		case detailActions:
@@ -342,6 +351,8 @@ func (v TasksView) handleExistingTaskAction(msg tea.KeyMsg, t model.Task) (Tasks
 		return v, v.toggleDone(t.ID)
 	case "c":
 		return v.openCarryPrompt(t.ID)
+	case "C":
+		return v.openClonePrompt(t.ID)
 	case "D":
 		return v, v.deleteTask(t.ID)
 	case "e":
@@ -373,6 +384,17 @@ func (v TasksView) openCarryPrompt(taskID string) (TasksView, tea.Cmd) {
 	v.carryInput.SetValue(tomorrow)
 	v.carryInput.Focus()
 	v.detailMode = detailCarry
+	v.pane = 1
+	return v, textinput.Blink
+}
+
+func (v TasksView) openClonePrompt(taskID string) (TasksView, tea.Cmd) {
+	tomorrow := v.date.AddDate(0, 0, 1).Format(model.DateFormat)
+	v.cloneTaskID = taskID
+	v.cloneInput.Reset()
+	v.cloneInput.SetValue(tomorrow)
+	v.cloneInput.Focus()
+	v.detailMode = detailClone
 	v.pane = 1
 	return v, textinput.Blink
 }
@@ -551,6 +573,43 @@ func (v TasksView) carryTaskTo(id string, destDate time.Time) tea.Cmd {
 			ID:   entry.ID,
 			Date: srcDate.Format(model.DateFormat),
 		})
+		return v.loadMsg()
+	}
+}
+
+func (v TasksView) updateClone(msg tea.KeyMsg) (TasksView, tea.Cmd) {
+	switch msg.String() {
+	case "enter", "ctrl+s":
+		raw := strings.TrimSpace(v.cloneInput.Value())
+		destDate, err := time.Parse(model.DateFormat, raw)
+		if err != nil {
+			// invalid date — stay in prompt
+			return v, nil
+		}
+		taskID := v.cloneTaskID
+		v.detailMode = detailNormal
+		v.cloneInput.Blur()
+		return v, v.cloneTaskTo(taskID, destDate)
+	case "esc":
+		v.detailMode = detailNormal
+		v.cloneInput.Blur()
+	default:
+		var cmd tea.Cmd
+		v.cloneInput, cmd = v.cloneInput.Update(msg)
+		return v, cmd
+	}
+	return v, nil
+}
+
+func (v TasksView) cloneTaskTo(id string, destDate time.Time) tea.Cmd {
+	return func() tea.Msg {
+		task, _, err := v.store.GetTaskByID(id)
+		if err != nil {
+			return errMsg{err}
+		}
+		if _, err := v.store.CloneTaskToDate(task, destDate); err != nil {
+			return errMsg{err}
+		}
 		return v.loadMsg()
 	}
 }
@@ -1100,6 +1159,8 @@ func (v TasksView) renderDetail(width int) string {
 		return v.renderLogForm(t, width)
 	case detailCarry:
 		return v.renderCarryPrompt(t, width)
+	case detailClone:
+		return v.renderClonePrompt(t, width)
 	case detailEditTask:
 		return v.renderTaskFormDetail(t, width)
 	case detailActions:
@@ -1120,7 +1181,7 @@ func (v TasksView) renderTaskDetail(t model.Task, width int) string {
 	lines = append(lines, renderActionsDetailSection(t.Actions)...)
 	lines = append(lines, renderLinkedActivities(v.linkedActivities)...)
 	lines = append(lines, "", sMuted.Render("ID: "+t.ID))
-	lines = append(lines, "", sMuted.Render("n notes  L log  d done  c carry  A actions  tab ←list"))
+	lines = append(lines, "", sMuted.Render("n notes  L log  d done  c carry  C clone  A actions  tab ←list"))
 	return strings.Join(lines, "\n")
 }
 
@@ -1159,6 +1220,24 @@ func (v TasksView) renderCarryPrompt(t model.Task, width int) string {
 		strings.Repeat("─", min(width, 36)),
 		"",
 		"  Date: " + v.carryInput.View() + hint,
+		"",
+		sMuted.Render("  enter to confirm  esc to cancel"),
+	}, "\n")
+}
+
+func (v TasksView) renderClonePrompt(t model.Task, width int) string {
+	raw := strings.TrimSpace(v.cloneInput.Value())
+	hint := ""
+	if _, err := time.Parse(model.DateFormat, raw); err != nil && raw != "" {
+		hint = sCarried.Render("  invalid date")
+	}
+
+	return strings.Join([]string{
+		sTitle.Render("Clone task to…"),
+		sMuted.Render("→ " + t.Title),
+		strings.Repeat("─", min(width, 36)),
+		"",
+		"  Date: " + v.cloneInput.View() + hint,
 		"",
 		sMuted.Render("  enter to confirm  esc to cancel"),
 	}, "\n")

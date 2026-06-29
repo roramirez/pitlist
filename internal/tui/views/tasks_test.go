@@ -1929,3 +1929,113 @@ func TestTasksViewActionsNoTaskNoOp(t *testing.T) {
 		t.Error("space with no tasks should produce nil cmd")
 	}
 }
+
+// ── clone ─────────────────────────────────────────────────────────────────────
+
+func TestTasksViewCloneEsc(t *testing.T) {
+	v, _, _ := viewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'C'}})
+	v = v2
+	if v.detailMode != detailClone {
+		t.Fatalf("expected detailClone, got %v", v.detailMode)
+	}
+
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	v = v2
+	if v.detailMode != detailNormal {
+		t.Errorf("expected detailNormal after esc, got %v", v.detailMode)
+	}
+}
+
+func TestTasksViewCloneInvalidDate(t *testing.T) {
+	v, _, _ := viewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'C'}})
+	v = v2
+
+	v.cloneInput.SetValue("not-a-date")
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	v = v2
+	if v.detailMode != detailClone {
+		t.Errorf("invalid date should keep clone mode, got %v", v.detailMode)
+	}
+}
+
+func TestTasksViewCloneConfirm(t *testing.T) {
+	v, s, srcDate := viewWithTaskAndActions(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'C'}})
+	v = v2
+	if v.detailMode != detailClone {
+		t.Fatalf("expected detailClone, got %v", v.detailMode)
+	}
+
+	destDate := srcDate.AddDate(0, 0, 2)
+	v.cloneInput.SetValue(destDate.Format("2006-01-02"))
+
+	v2, cmd := v.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	v = v2
+	if cmd == nil {
+		t.Fatal("enter with valid clone date should return a cmd")
+	}
+	msg := cmd()
+	if _, ok := msg.(TasksMsg); !ok {
+		t.Fatalf("expected TasksMsg after clone, got %T", msg)
+	}
+
+	// Original stays on source day.
+	src, _ := s.GetDayPlan(srcDate)
+	if len(src.Tasks) != 1 || src.Tasks[0].ID != "t-20260518-001" {
+		t.Errorf("original task should remain on src day, got %v", src.Tasks)
+	}
+
+	// Clone added to dest day as a reset skeleton.
+	dest, _ := s.GetDayPlan(destDate)
+	if len(dest.Tasks) != 1 {
+		t.Fatalf("expected 1 task on dest day, got %d", len(dest.Tasks))
+	}
+	clone := dest.Tasks[0]
+	if clone.ID == "t-20260518-001" {
+		t.Errorf("clone should have a fresh ID, got %q", clone.ID)
+	}
+	if len(clone.Actions) != 2 {
+		t.Fatalf("clone should keep all actions, got %d", len(clone.Actions))
+	}
+	for _, a := range clone.Actions {
+		if a.Done {
+			t.Errorf("clone action %q should be reset to not-done", a.ID)
+		}
+	}
+}
+
+func TestTasksViewCloneInputKey(t *testing.T) {
+	v, _, _ := viewWithTask(t)
+
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'C'}})
+	v = v2
+
+	v2, _ = v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
+	v = v2
+	_ = v.cloneInput.Value() // ensure no panic
+}
+
+func TestTasksViewViewWithCloneMode(t *testing.T) {
+	v, _, _ := viewWithTask(t)
+	v2, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'C'}})
+	v = v2
+	if v.View(120, 40) == "" {
+		t.Error("View in clone mode returned empty")
+	}
+}
+
+func TestCloneTaskToNotFound(t *testing.T) {
+	v, _, date := viewWithTask(t)
+	cmd := v.cloneTaskTo("no-such-id", date.AddDate(0, 0, 1))
+	if cmd == nil {
+		t.Fatal("cloneTaskTo should return a cmd")
+	}
+	if _, ok := cmd().(errMsg); !ok {
+		t.Error("expected errMsg for missing task")
+	}
+}

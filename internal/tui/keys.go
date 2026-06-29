@@ -12,6 +12,7 @@ type keyMap struct {
 	Done    key.Binding
 	Edit    key.Binding
 	Carry   key.Binding
+	Clone   key.Binding
 	Delete  key.Binding
 	Filter  key.Binding
 	Week    key.Binding
@@ -33,6 +34,7 @@ var keys = keyMap{
 	Done:    key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "done")),
 	Edit:    key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit")),
 	Carry:   key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "carry")),
+	Clone:   key.NewBinding(key.WithKeys("C"), key.WithHelp("C", "clone")),
 	Delete:  key.NewBinding(key.WithKeys("D"), key.WithHelp("D", "delete")),
 	Filter:  key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "filter")),
 	Week:    key.NewBinding(key.WithKeys("w"), key.WithHelp("w", "week view")),
