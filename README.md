@@ -78,6 +78,7 @@ Launch with `pitlist` (no subcommand). Five tabs:
 | `e` | Edit task (title, context, labels, priority) |
 | `d` | Toggle done |
 | `c` | Carry to another day (prompts for date) |
+| `C` | Clone to another day as a reset skeleton (prompts for date) |
 | `n` | Edit notes |
 | `L` | Log activity linked to this task |
 | `A` | Manage actions (sub-task checklist) |
@@ -105,7 +106,7 @@ Activity:  ∑ 1h 15m
   May 18 14:30  45m  Deep dive into token bug  [debugging]
   May 19 09:00  30m  Drafted token rotation section  [auth]
 
-n notes  L log activity  d done  c carry  A actions  tab ←list
+n notes  L log activity  d done  c carry  C clone  A actions  tab ←list
 ```
 
 Press `A` to open the actions editor — add, toggle, and delete checklist steps inline:
@@ -227,6 +228,8 @@ pitlist show t-20260519-001
 pitlist edit t-20260519-001           # opens $EDITOR
 pitlist carry t-20260519-001          # to tomorrow
 pitlist carry t-20260519-001 --to next_monday
+pitlist clone t-20260519-001          # skeleton copy on tomorrow (actions reset)
+pitlist clone t-20260519-001 --to next_monday
 pitlist delete t-20260519-001
 pitlist schedule f-20260606-001       # move future task to today
 pitlist schedule f-20260606-001 --date next_monday

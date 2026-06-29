@@ -71,6 +71,7 @@ func NewRootCmd() *cobra.Command {
 		newAgendaCmd(),
 		newDeleteCmd(),
 		newCarryCmd(),
+		newCloneCmd(),
 		newShowCmd(),
 		newEditCmd(),
 		newLogCmd(),

@@ -404,6 +404,24 @@ func (s *YAMLStore) AddActivityRefToFutureTask(taskID string, ref model.Activity
 	return s.SaveFutureList(list)
 }
 
+// CloneTaskToDate writes a skeleton clone of task onto destDate and returns the clone.
+func (s *YAMLStore) CloneTaskToDate(task *model.Task, destDate time.Time) (*model.Task, error) {
+	plan, err := s.GetDayPlan(destDate)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now().UTC()
+	clone := task.CloneSkeleton()
+	clone.ID = NextTaskID(plan)
+	clone.CreatedAt = now
+	clone.UpdatedAt = now
+	plan.Tasks = append(plan.Tasks, clone)
+	if err := s.SaveDayPlan(plan); err != nil {
+		return nil, err
+	}
+	return &clone, nil
+}
+
 // --- ID generation ---
 
 func NextTaskID(plan *model.DayPlan) string {

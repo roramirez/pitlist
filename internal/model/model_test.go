@@ -133,3 +133,79 @@ func TestActivityRef(t *testing.T) {
 		t.Errorf("Date = %q", ref.Date)
 	}
 }
+
+func TestCloneSkeleton(t *testing.T) {
+	now := time.Now().UTC()
+	src := Task{
+		ID:        "t-20260518-001",
+		Title:     "Original",
+		Context:   "work",
+		Notes:     "keep notes",
+		Labels:    []string{"a", "b"},
+		Status:    StatusDone,
+		Priority:  PriorityHigh,
+		CreatedAt: now,
+		UpdatedAt: now,
+		DoneAt:    &now,
+		CarryFrom: "2026-05-17",
+		CarryTo:   "2026-05-19",
+		ActivityRefs: []ActivityRef{
+			{ID: "a-001", Date: "2026-05-18"},
+		},
+		Actions: []Action{
+			{ID: "ac-001", Title: "step one", Done: true},
+			{ID: "ac-002", Title: "step two", Done: false},
+		},
+	}
+
+	clone := src.CloneSkeleton()
+
+	if clone.ID != "" {
+		t.Errorf("ID = %q, want empty", clone.ID)
+	}
+	if clone.Status != StatusTodo {
+		t.Errorf("Status = %q, want todo", clone.Status)
+	}
+	if clone.DoneAt != nil {
+		t.Error("DoneAt should be nil")
+	}
+	if clone.CarryFrom != "" || clone.CarryTo != "" {
+		t.Errorf("carry metadata not cleared: %q %q", clone.CarryFrom, clone.CarryTo)
+	}
+	if clone.ActivityRefs != nil {
+		t.Error("ActivityRefs should be nil")
+	}
+	if !clone.CreatedAt.IsZero() || !clone.UpdatedAt.IsZero() {
+		t.Error("timestamps should be zeroed")
+	}
+	if clone.Title != "Original" || clone.Notes != "keep notes" || clone.Priority != PriorityHigh {
+		t.Errorf("core fields not preserved: %+v", clone)
+	}
+	if len(clone.Actions) != 2 {
+		t.Fatalf("expected 2 actions, got %d", len(clone.Actions))
+	}
+	for _, a := range clone.Actions {
+		if a.Done {
+			t.Errorf("action %q should be reset to not-done", a.ID)
+		}
+	}
+
+	// Deep-copy: mutating clone must not affect the source.
+	clone.Actions[0].Done = true
+	clone.Labels[0] = "mutated"
+	if src.Actions[0].Done != true {
+		// src action 0 was originally Done=true; ensure it's still true (unchanged by clone reset)
+		t.Error("source action should be unchanged")
+	}
+	if src.Labels[0] != "a" {
+		t.Errorf("source labels mutated via clone: %v", src.Labels)
+	}
+}
+
+func TestCloneSkeletonNoActions(t *testing.T) {
+	src := Task{ID: "t-1", Title: "No actions", Status: StatusTodo}
+	clone := src.CloneSkeleton()
+	if clone.Actions != nil {
+		t.Errorf("Actions should be nil when source has none, got %v", clone.Actions)
+	}
+}
